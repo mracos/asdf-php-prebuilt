@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# asdf help overview hook — one-line description shown by `asdf help php`.
+set -euo pipefail
+echo "PHP via shivammathur/homebrew-php bottles (no brew runtime dep)."

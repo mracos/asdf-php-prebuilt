@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Install PHP from a downloaded bottle into $ASDF_INSTALL_PATH.
+#
+# asdf plugin contract:
+#   env: ASDF_INSTALL_TYPE=version, ASDF_INSTALL_VERSION, ASDF_INSTALL_PATH,
+#        ASDF_DOWNLOAD_PATH
+#   exit 0 on success; binary callable at $ASDF_INSTALL_PATH/bin/php
+#
+# Implementation lives in lib/relocate.bash + this orchestrator (task #8).
+
+set -euo pipefail
+
+plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../lib/utils.bash
+source "$plugin_dir/lib/utils.bash"
+
+: "${ASDF_INSTALL_VERSION:?ASDF_INSTALL_VERSION is required}"
+: "${ASDF_INSTALL_PATH:?ASDF_INSTALL_PATH is required}"
+: "${ASDF_DOWNLOAD_PATH:?ASDF_DOWNLOAD_PATH is required}"
+
+asdf_php_die "bin/install not implemented yet — see tasks #7, #8"

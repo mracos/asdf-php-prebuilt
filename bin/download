@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Download PHP bottle + transitive deps for the requested version.
+#
+# asdf plugin contract:
+#   env: ASDF_INSTALL_TYPE=version, ASDF_INSTALL_VERSION, ASDF_DOWNLOAD_PATH
+#   exit 0 on success; bottles end up under $ASDF_DOWNLOAD_PATH
+#
+# Implementation lives in lib/ghcr.bash + lib/formula.bash (tasks #5–#6).
+
+set -euo pipefail
+
+plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../lib/utils.bash
+source "$plugin_dir/lib/utils.bash"
+
+: "${ASDF_INSTALL_VERSION:?ASDF_INSTALL_VERSION is required}"
+: "${ASDF_DOWNLOAD_PATH:?ASDF_DOWNLOAD_PATH is required}"
+
+asdf_php_die "bin/download not implemented yet — see tasks #5, #6"

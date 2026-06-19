@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# List PHP versions installable via this plugin.
+#
+# asdf plugin contract:
+#   stdout: space- or newline-separated versions, oldest to newest
+#
+# Each stable formula in shivammathur/homebrew-php pins exactly one patch
+# release (e.g. php@8.1 → 8.1.34). We expose those patch versions, not the
+# majmin keys. If you pin a specific patch the tap doesn't currently ship,
+# bin/install errors out — you'd need to bump your .tool-versions / mise.toml
+# to match the tap.
+
+set -euo pipefail
+
+plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../lib/utils.bash
+source "$plugin_dir/lib/utils.bash"
+# shellcheck source=../lib/formula.bash
+source "$plugin_dir/lib/formula.bash"
+
+versions=()
+while read -r majmin; do
+  [[ -z "$majmin" ]] && continue
+  if v=$(asdf_php_formula_fetch "$majmin" | asdf_php_formula_version); then
+    versions+=("$v")
+  else
+    asdf_php_warn "skipping php@${majmin}: could not parse version"
+  fi
+done < <(asdf_php_formula_list_majmins)
+
+printf '%s\n' "${versions[@]+${versions[@]}}" | sort -V
