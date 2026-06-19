@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Download the PHP bottle (and its transitive deps — task #6 wires deps in)
-# for the requested version into $ASDF_DOWNLOAD_PATH.
+# Download the PHP bottle + transitive runtime deps for the requested
+# version into $ASDF_DOWNLOAD_PATH.
 #
-# asdf plugin contract:
-#   env: ASDF_INSTALL_TYPE=version, ASDF_INSTALL_VERSION, ASDF_DOWNLOAD_PATH
+# Layout written:
+#   $ASDF_DOWNLOAD_PATH/
+#     manifest.txt        — "<name> <tag> <digest> <file>" per line
+#     <name>-<tag>.tar.gz — bottle tarballs (php first, then deps)
 
 set -euo pipefail
 
@@ -14,6 +16,8 @@ source "$plugin_dir/lib/utils.bash"
 source "$plugin_dir/lib/formula.bash"
 # shellcheck source=../lib/ghcr.bash
 source "$plugin_dir/lib/ghcr.bash"
+# shellcheck source=../lib/deps.bash
+source "$plugin_dir/lib/deps.bash"
 
 : "${ASDF_INSTALL_VERSION:?ASDF_INSTALL_VERSION is required}"
 : "${ASDF_DOWNLOAD_PATH:?ASDF_DOWNLOAD_PATH is required}"
@@ -24,6 +28,17 @@ if [[ ! "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+ ]]; then
 fi
 majmin="${BASH_REMATCH[1]}"
 
+mkdir -p "$ASDF_DOWNLOAD_PATH"
+manifest="$ASDF_DOWNLOAD_PATH/manifest.txt"
+: > "$manifest"
+
+# Filesystem-safe filename for a formula name (@ stays; macOS allows it).
+file_for() {
+  local name="$1" tag="$2"
+  echo "${ASDF_DOWNLOAD_PATH}/${name}-${tag}.tar.gz"
+}
+
+# 1. Main formula
 formula_content="$(asdf_php_formula_fetch "$majmin")"
 formula_version="$(printf '%s' "$formula_content" | asdf_php_formula_version)" \
   || asdf_php_die "could not parse version from php@${majmin} formula"
@@ -38,9 +53,28 @@ root_url="$(printf '%s' "$formula_content" | asdf_php_formula_bottle_root_url)" 
 read -r bottle_tag bottle_digest < <(printf '%s' "$formula_content" | asdf_php_formula_bottle_resolve) \
   || asdf_php_die "no compatible bottle for $(asdf_php_host_tag) in php@${majmin}"
 
-repo="$(asdf_php_ghcr_repo_path "$root_url" "php@${majmin}")"
-dest="${ASDF_DOWNLOAD_PATH}/php-${version}-${bottle_tag}.tar.gz"
+php_repo="$(asdf_php_ghcr_repo_path "$root_url" "php@${majmin}")"
+php_file="$(file_for "php@${majmin}" "$bottle_tag")"
 
-asdf_php_log "downloading php@${majmin}=${version} bottle ($bottle_tag) from $repo"
-asdf_php_ghcr_fetch_blob "$repo" "$bottle_digest" "$dest"
-asdf_php_log "wrote $dest ($(du -h "$dest" | awk '{print $1}'))"
+asdf_php_log "downloading php@${majmin}=${version} ($bottle_tag) from $php_repo"
+asdf_php_ghcr_fetch_blob "$php_repo" "$bottle_digest" "$php_file"
+printf 'php@%s %s %s %s\n' "$majmin" "$bottle_tag" "$bottle_digest" "$(basename "$php_file")" >> "$manifest"
+
+# 2. Transitive deps
+asdf_php_log "resolving transitive dep DAG..."
+deps_lines="$(printf '%s' "$formula_content" | asdf_php_deps_walk)"
+dep_count=$(printf '%s' "$deps_lines" | grep -cv '^$' || true)
+asdf_php_log "resolved $dep_count deps; downloading..."
+
+# Read dep lines and pull each
+while IFS=' ' read -r name root_url tag digest; do
+  [[ -z "$name" ]] && continue
+  repo="$(asdf_php_ghcr_repo_path "$root_url" "$name")"
+  dest="$(file_for "$name" "$tag")"
+  asdf_php_log "  $name ($tag)"
+  asdf_php_ghcr_fetch_blob "$repo" "$digest" "$dest"
+  printf '%s %s %s %s\n' "$name" "$tag" "$digest" "$(basename "$dest")" >> "$manifest"
+done <<< "$deps_lines"
+
+total_size="$(du -sh "$ASDF_DOWNLOAD_PATH" | awk '{print $1}')"
+asdf_php_log "done — wrote $(wc -l < "$manifest" | tr -d ' ') tarballs ($total_size) to $ASDF_DOWNLOAD_PATH"

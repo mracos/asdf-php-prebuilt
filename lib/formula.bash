@@ -40,6 +40,29 @@ asdf_php_formula_fetch() {
   cat "$cache_file"
 }
 
+# Fetch a homebrew-core formula by name (e.g. "gettext", "openssl@3").
+# Homebrew-core shards Formula/ by first character of the formula name.
+# Returns non-zero on miss without dying — some deps may not exist there
+# (caller decides whether to skip or escalate).
+asdf_php_formula_fetch_core() {
+  local name="$1" shard safe cache_file url
+  # Sharding: single-char shard except lib*, which uses "lib".
+  if [[ "$name" == lib* ]]; then
+    shard="lib"
+  else
+    shard="${name:0:1}"
+  fi
+  safe="${name//\//_}"
+  cache_file="${ASDF_PHP_CACHE_DIR}/formula-core-${safe}.rb"
+  if [[ ! -f "$cache_file" ]]; then
+    mkdir -p "$ASDF_PHP_CACHE_DIR"
+    url="https://raw.githubusercontent.com/Homebrew/homebrew-core/master/Formula/${shard}/${name}.rb"
+    curl -fsSL "$url" -o "$cache_file" 2>/dev/null \
+      || { rm -f "$cache_file"; return 1; }
+  fi
+  cat "$cache_file"
+}
+
 # Parse the bottle root_url from formula content (stdin).
 # E.g. `root_url "https://ghcr.io/v2/shivammathur/php"`
 asdf_php_formula_bottle_root_url() {
@@ -53,14 +76,20 @@ asdf_php_formula_bottle_root_url() {
 }
 
 # Parse the bottle sha256 digest for a given platform tag from formula
-# content (stdin). E.g. `sha256 arm64_sequoia: "1692b3df..."`.
+# content (stdin). Handles both shapes:
+#   sha256 arm64_sequoia: "1692b3df..."
+#   sha256 cellar: :any, arm64_tahoe: "..."
+#   sha256 cellar: :any_skip_relocation, x86_64_linux: "..."
 #
 # Args:
 #   $1 — platform tag (e.g. arm64_sequoia, sonoma)
 asdf_php_formula_bottle_digest() {
   local want="$1" line
   while IFS= read -r line; do
-    if [[ "$line" =~ ^[[:space:]]*sha256[[:space:]]+([a-z0-9_]+):[[:space:]]+\"([0-9a-f]{64})\" ]]; then
+    [[ "$line" =~ ^[[:space:]]*sha256[[:space:]] ]] || continue
+    # Greedy .* eats any "cellar: :any," qualifier so the capture lands on
+    # the trailing <tag>: "<digest>" pair.
+    if [[ "$line" =~ [[:space:]]([a-z0-9_]+):[[:space:]]+\"([0-9a-f]{64})\" ]]; then
       if [[ "${BASH_REMATCH[1]}" == "$want" ]]; then
         echo "${BASH_REMATCH[2]}"; return 0
       fi
@@ -81,6 +110,36 @@ asdf_php_formula_bottle_resolve() {
     fi
   done < <(asdf_php_host_tag_fallbacks)
   return 1
+}
+
+# Parse runtime dependencies from formula content (stdin), one per line.
+#
+# - Skips `=> :build` / `=> :test` (and any combination in arrays).
+# - Treats unconditional `depends_on` and those inside `on_macos do ... end`
+#   as runtime deps on macOS.
+# - Skips `on_linux do ... end` deps.
+# - Block tracking is shallow: nested do/end inside on_* blocks confuse it,
+#   but we haven't observed that in php@*.rb. Revisit if needed.
+asdf_php_formula_dependencies() {
+  awk '
+    /^[[:space:]]*on_macos[[:space:]]+do[[:space:]]*$/ { in_macos=1; next }
+    /^[[:space:]]*on_linux[[:space:]]+do[[:space:]]*$/ { in_linux=1; next }
+    /^[[:space:]]*end[[:space:]]*$/ {
+      if (in_macos) { in_macos=0; next }
+      if (in_linux) { in_linux=0; next }
+    }
+    in_linux { next }
+    /^[[:space:]]*depends_on[[:space:]]+"[^"]+"/ {
+      # Skip build/test-scoped deps.
+      if ($0 ~ /=>[[:space:]]*:build/) next
+      if ($0 ~ /=>[[:space:]]*:test/) next
+      if ($0 ~ /=>[[:space:]]*\[[^]]*:build/) next
+      if ($0 ~ /=>[[:space:]]*\[[^]]*:test/) next
+      # Extract first quoted name.
+      n = split($0, a, "\"")
+      if (n >= 2) print a[2]
+    }
+  '
 }
 
 # Parse the patch version from formula content (stdin).
