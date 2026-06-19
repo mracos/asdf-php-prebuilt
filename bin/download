@@ -1,19 +1,46 @@
 #!/usr/bin/env bash
-# Download PHP bottle + transitive deps for the requested version.
+# Download the PHP bottle (and its transitive deps — task #6 wires deps in)
+# for the requested version into $ASDF_DOWNLOAD_PATH.
 #
 # asdf plugin contract:
 #   env: ASDF_INSTALL_TYPE=version, ASDF_INSTALL_VERSION, ASDF_DOWNLOAD_PATH
-#   exit 0 on success; bottles end up under $ASDF_DOWNLOAD_PATH
-#
-# Implementation lives in lib/ghcr.bash + lib/formula.bash (tasks #5–#6).
 
 set -euo pipefail
 
 plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../lib/utils.bash
 source "$plugin_dir/lib/utils.bash"
+# shellcheck source=../lib/formula.bash
+source "$plugin_dir/lib/formula.bash"
+# shellcheck source=../lib/ghcr.bash
+source "$plugin_dir/lib/ghcr.bash"
 
 : "${ASDF_INSTALL_VERSION:?ASDF_INSTALL_VERSION is required}"
 : "${ASDF_DOWNLOAD_PATH:?ASDF_DOWNLOAD_PATH is required}"
 
-asdf_php_die "bin/download not implemented yet — see tasks #5, #6"
+version="$ASDF_INSTALL_VERSION"
+if [[ ! "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+ ]]; then
+  asdf_php_die "version must be MAJOR.MINOR.PATCH (got: $version)"
+fi
+majmin="${BASH_REMATCH[1]}"
+
+formula_content="$(asdf_php_formula_fetch "$majmin")"
+formula_version="$(printf '%s' "$formula_content" | asdf_php_formula_version)" \
+  || asdf_php_die "could not parse version from php@${majmin} formula"
+
+if [[ "$formula_version" != "$version" ]]; then
+  asdf_php_die "tap currently ships php@${majmin}=${formula_version}, not ${version} — bump your .tool-versions/mise.toml to ${formula_version}"
+fi
+
+root_url="$(printf '%s' "$formula_content" | asdf_php_formula_bottle_root_url)" \
+  || asdf_php_die "no bottle root_url in php@${majmin}"
+
+read -r bottle_tag bottle_digest < <(printf '%s' "$formula_content" | asdf_php_formula_bottle_resolve) \
+  || asdf_php_die "no compatible bottle for $(asdf_php_host_tag) in php@${majmin}"
+
+repo="$(asdf_php_ghcr_repo_path "$root_url" "php@${majmin}")"
+dest="${ASDF_DOWNLOAD_PATH}/php-${version}-${bottle_tag}.tar.gz"
+
+asdf_php_log "downloading php@${majmin}=${version} bottle ($bottle_tag) from $repo"
+asdf_php_ghcr_fetch_blob "$repo" "$bottle_digest" "$dest"
+asdf_php_log "wrote $dest ($(du -h "$dest" | awk '{print $1}'))"

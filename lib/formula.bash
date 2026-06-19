@@ -40,6 +40,49 @@ asdf_php_formula_fetch() {
   cat "$cache_file"
 }
 
+# Parse the bottle root_url from formula content (stdin).
+# E.g. `root_url "https://ghcr.io/v2/shivammathur/php"`
+asdf_php_formula_bottle_root_url() {
+  local line
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]*root_url[[:space:]]+\"([^\"]+)\" ]]; then
+      echo "${BASH_REMATCH[1]}"; return 0
+    fi
+  done
+  return 1
+}
+
+# Parse the bottle sha256 digest for a given platform tag from formula
+# content (stdin). E.g. `sha256 arm64_sequoia: "1692b3df..."`.
+#
+# Args:
+#   $1 — platform tag (e.g. arm64_sequoia, sonoma)
+asdf_php_formula_bottle_digest() {
+  local want="$1" line
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]*sha256[[:space:]]+([a-z0-9_]+):[[:space:]]+\"([0-9a-f]{64})\" ]]; then
+      if [[ "${BASH_REMATCH[1]}" == "$want" ]]; then
+        echo "${BASH_REMATCH[2]}"; return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+# Resolve a bottle digest by walking the host's fallback tag chain.
+# Reads formula content from stdin. Prints "tag digest" of the first match.
+asdf_php_formula_bottle_resolve() {
+  local content tag digest
+  content="$(cat)"
+  while read -r tag; do
+    [[ -z "$tag" ]] && continue
+    if digest=$(printf '%s' "$content" | asdf_php_formula_bottle_digest "$tag"); then
+      echo "$tag $digest"; return 0
+    fi
+  done < <(asdf_php_host_tag_fallbacks)
+  return 1
+}
+
 # Parse the patch version from formula content (stdin).
 # Tries `version "X.Y.Z"` first, falls back to `url ".../php-X.Y.Z.tar.xz"`.
 asdf_php_formula_version() {
