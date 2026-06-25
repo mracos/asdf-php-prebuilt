@@ -4,18 +4,48 @@
 # asdf plugin contract:
 #   env: ASDF_INSTALL_TYPE=version, ASDF_INSTALL_VERSION, ASDF_INSTALL_PATH,
 #        ASDF_DOWNLOAD_PATH
-#   exit 0 on success; binary callable at $ASDF_INSTALL_PATH/bin/php
-#
-# Implementation lives in lib/relocate.bash + this orchestrator (task #8).
 
 set -euo pipefail
 
 plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../lib/utils.bash
 source "$plugin_dir/lib/utils.bash"
+# shellcheck source=../lib/install.bash
+source "$plugin_dir/lib/install.bash"
+# shellcheck source=../lib/relocate.bash
+source "$plugin_dir/lib/relocate.bash"
 
 : "${ASDF_INSTALL_VERSION:?ASDF_INSTALL_VERSION is required}"
 : "${ASDF_INSTALL_PATH:?ASDF_INSTALL_PATH is required}"
 : "${ASDF_DOWNLOAD_PATH:?ASDF_DOWNLOAD_PATH is required}"
 
-asdf_php_die "bin/install not implemented yet — see tasks #7, #8"
+version="$ASDF_INSTALL_VERSION"
+if [[ ! "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+ ]]; then
+  asdf_php_die "version must be MAJOR.MINOR.PATCH (got: $version)"
+fi
+majmin="${BASH_REMATCH[1]}"
+
+# Idempotency: if a previous attempt left junk, start clean.
+if [[ -d "$ASDF_INSTALL_PATH/Cellar" || -d "$ASDF_INSTALL_PATH/opt" ]]; then
+  asdf_php_log "removing previous install at $ASDF_INSTALL_PATH"
+  rm -rf "$ASDF_INSTALL_PATH"
+fi
+mkdir -p "$ASDF_INSTALL_PATH"
+
+asdf_php_log "extracting bottles..."
+asdf_php_install_extract_all "$ASDF_INSTALL_PATH" "$ASDF_DOWNLOAD_PATH"
+
+asdf_php_log "wiring opt/<formula> symlinks..."
+asdf_php_install_link_opts "$ASDF_INSTALL_PATH"
+
+asdf_php_log "relocating Mach-O placeholders..."
+asdf_php_relocate_all "$ASDF_INSTALL_PATH"
+
+asdf_php_log "wiring bin/ entry points..."
+asdf_php_install_link_bins "$ASDF_INSTALL_PATH" "$majmin"
+
+asdf_php_log "staging default config to etc/..."
+asdf_php_install_seed_etc "$ASDF_INSTALL_PATH" "$majmin"
+
+asdf_php_install_verify "$ASDF_INSTALL_PATH" "$version"
+asdf_php_log "installed php $version to $ASDF_INSTALL_PATH"
