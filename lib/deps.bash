@@ -19,7 +19,12 @@ set -euo pipefail
 ASDF_PHP_DEPS_CORE_ROOT_URL="${ASDF_PHP_DEPS_CORE_ROOT_URL:-https://ghcr.io/v2/homebrew/core}"
 
 # Walk transitive deps. Reads the root formula content from stdin.
+# Optional arg $1 is the homebrew-core ref to resolve deps against
+# (defaults to master). For historical installs, pass the contemporary
+# commit so transitive deps come from formulas that match the era when
+# the root bottle was built.
 asdf_php_deps_walk() {
+  local core_ref="${1:-master}"
   local root_content seen queue name content root_url tag digest
   root_content="$(cat)"
   seen=""
@@ -40,8 +45,8 @@ asdf_php_deps_walk() {
     fi
     seen="${seen}"$'\n'"${name}"
 
-    if ! content="$(asdf_php_formula_fetch_core "$name")"; then
-      asdf_php_warn "no homebrew-core formula for dep '$name'; skipping"
+    if ! content="$(asdf_php_formula_fetch_core "$name" "$core_ref")"; then
+      asdf_php_warn "no homebrew-core formula for dep '$name' at ref ${core_ref:0:8}; skipping"
       continue
     fi
 

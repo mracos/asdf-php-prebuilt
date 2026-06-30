@@ -70,17 +70,48 @@ prefix via `install_name_tool -change`, then ad-hoc codesigns
 (`codesign --force --sign -`) so macOS's dyld doesn't reject the
 re-signed binary.
 
-**4. Plugin contract: asdf-style bash.**
+**4. Historical patch versions via tap git history.**
+
+The current tap formula only pins one patch version per major.minor
+(e.g. `php@8.1` currently = `8.1.34`). Older patches like `8.1.27` —
+which projects with frozen `.tool-versions` need — would otherwise be
+unreachable. We work around that by walking the tap's git history:
+
+- Shallow-clone `shivammathur/homebrew-php` to
+  `~/.cache/asdf-php/tap-clone/` on first historical request
+  (~10MB, refreshed at most once per 24h).
+- For a requested version X, walk the file history of
+  `Formula/php@<MAJMIN>.rb` newest-first and pick the latest commit
+  whose parsed version equals X. Not the *first* commit with that
+  url — the tap sometimes bumps the URL a few seconds before the
+  rebuilt bottle sha256s land, so the earliest commit can still carry
+  the previous patch's bottle hashes. The latest one always has the
+  bottles that were actually built against the new source.
+- From that commit's committer timestamp, find the contemporary
+  `Homebrew/homebrew-core` commit via
+  `gh api commits?until=<iso>&per_page=1` so transitive deps come
+  from formulas that match the era when the bottle was built. Mixing
+  today's `openssl@3` with a `libpq` from 2023 surfaces ABI
+  mismatches (we hit `_SSL_CIPHER_get_bits not found` doing exactly
+  that during dev).
+
+Result: `mise install php@8.1.27` works without any change to the
+team's `.tool-versions`.
+
+**5. Plugin contract: asdf-style bash.**
 
 - `bin/list-all` — lists available PHP versions by enumerating
-  `Formula/php@*.rb` in the tap.
+  `Formula/php@*.rb` in the tap at HEAD. Historical patches resolve
+  at install time, not list time.
 - `bin/download` — bottle + dep pull into `$ASDF_DOWNLOAD_PATH`.
+  Fast-paths the current-tap version; falls back to git-history
+  resolution otherwise.
 - `bin/install` — extract, stage, relocate, codesign, verify
   `php --version`.
 
 Lives at `~/src/github.com/mracos/asdf-php`. Distributed via
-`mise plugin install php https://github.com/mracos/asdf-php` and the equivalent
-asdf invocation.
+`mise plugin install php https://github.com/mracos/asdf-php` and the
+equivalent asdf invocation.
 
 ## Consequences
 
@@ -103,9 +134,13 @@ asdf invocation.
   during CI bursts.
 - Coverage is bounded by what shivammathur publishes. If a patch version
   predates the tap's history, it won't be installable until we own the
-  build pipeline.
+  build pipeline. Within the tap's history (which goes back to PHP 5.6),
+  any pinned patch resolves via the git-history fallback.
 - Two binary sources to track (`shivammathur/homebrew-php` for `php@*` and
   `Homebrew/homebrew-core` for transitive deps). Both can move.
+- Historical installs require `gh` CLI authenticated against GitHub
+  (for the homebrew-core ref lookup) and a one-time ~10MB shallow clone
+  of the tap.
 
 ## Implementation Notes
 

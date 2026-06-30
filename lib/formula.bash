@@ -27,36 +27,41 @@ asdf_php_formula_list_majmins() {
     | sort -V
 }
 
-# Fetch the raw formula for a majmin (e.g. "8.1"). Cached on disk.
+# Fetch the raw formula for a majmin (e.g. "8.1") at a given ref. The ref
+# defaults to ASDF_PHP_TAP_REF (master). For historical lookups, pass a
+# commit sha. Cached on disk under (majmin, ref-short).
 asdf_php_formula_fetch() {
-  local majmin="$1"
-  local cache_file="${ASDF_PHP_CACHE_DIR}/formula-php@${majmin}-${ASDF_PHP_TAP_REF}.rb"
+  local majmin="$1" ref="${2:-$ASDF_PHP_TAP_REF}"
+  local ref_short="${ref:0:12}"
+  local cache_file="${ASDF_PHP_CACHE_DIR}/formula-php@${majmin}-${ref_short}.rb"
   if [[ ! -f "$cache_file" ]]; then
     mkdir -p "$ASDF_PHP_CACHE_DIR"
-    local url="https://raw.githubusercontent.com/${ASDF_PHP_TAP_REPO}/${ASDF_PHP_TAP_REF}/Formula/php@${majmin}.rb"
+    local url="https://raw.githubusercontent.com/${ASDF_PHP_TAP_REPO}/${ref}/Formula/php@${majmin}.rb"
     curl -fsSL "$url" -o "$cache_file" \
       || asdf_php_die "could not fetch formula php@${majmin} from $url"
   fi
   cat "$cache_file"
 }
 
-# Fetch a homebrew-core formula by name (e.g. "gettext", "openssl@3").
-# Homebrew-core shards Formula/ by first character of the formula name.
+# Fetch a homebrew-core formula by name at a given ref (e.g. "gettext",
+# "openssl@3"). Homebrew-core shards Formula/ by first character of the
+# formula name (lib* under lib/). ref defaults to "master".
 # Returns non-zero on miss without dying — some deps may not exist there
 # (caller decides whether to skip or escalate).
 asdf_php_formula_fetch_core() {
-  local name="$1" shard safe cache_file url
-  # Sharding: single-char shard except lib*, which uses "lib".
+  local name="$1" ref="${2:-master}"
+  local shard safe ref_short cache_file url
   if [[ "$name" == lib* ]]; then
     shard="lib"
   else
     shard="${name:0:1}"
   fi
   safe="${name//\//_}"
-  cache_file="${ASDF_PHP_CACHE_DIR}/formula-core-${safe}.rb"
+  ref_short="${ref:0:12}"
+  cache_file="${ASDF_PHP_CACHE_DIR}/formula-core-${safe}-${ref_short}.rb"
   if [[ ! -f "$cache_file" ]]; then
     mkdir -p "$ASDF_PHP_CACHE_DIR"
-    url="https://raw.githubusercontent.com/Homebrew/homebrew-core/master/Formula/${shard}/${name}.rb"
+    url="https://raw.githubusercontent.com/Homebrew/homebrew-core/${ref}/Formula/${shard}/${name}.rb"
     curl -fsSL "$url" -o "$cache_file" 2>/dev/null \
       || { rm -f "$cache_file"; return 1; }
   fi

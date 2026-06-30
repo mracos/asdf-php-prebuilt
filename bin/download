@@ -18,6 +18,8 @@ source "$plugin_dir/lib/formula.bash"
 source "$plugin_dir/lib/ghcr.bash"
 # shellcheck source=../lib/deps.bash
 source "$plugin_dir/lib/deps.bash"
+# shellcheck source=../lib/history.bash
+source "$plugin_dir/lib/history.bash"
 
 : "${ASDF_INSTALL_VERSION:?ASDF_INSTALL_VERSION is required}"
 : "${ASDF_DOWNLOAD_PATH:?ASDF_DOWNLOAD_PATH is required}"
@@ -38,13 +40,26 @@ file_for() {
   echo "${ASDF_DOWNLOAD_PATH}/${name}-${tag}.tar.gz"
 }
 
-# 1. Main formula
-formula_content="$(asdf_php_formula_fetch "$majmin")"
-formula_version="$(printf '%s' "$formula_content" | asdf_php_formula_version)" \
-  || asdf_php_die "could not parse version from php@${majmin} formula"
+# 1. Resolve which tap/core refs to use.
+# Fast path: requested version matches what the current tap pins.
+# Historical path: walk tap history for the commit that pinned it, then
+# pick the contemporary homebrew-core commit so deps come from the era
+# the bottle was built against (otherwise modern openssl/libpq ABI
+# divergence breaks libpq.5.dylib symbol lookup).
+current_content="$(asdf_php_formula_fetch "$majmin")"
+current_version="$(printf '%s' "$current_content" | asdf_php_formula_version)" \
+  || asdf_php_die "could not parse version from current php@${majmin} formula"
 
-if [[ "$formula_version" != "$version" ]]; then
-  asdf_php_die "tap currently ships php@${majmin}=${formula_version}, not ${version} — bump your .tool-versions/mise.toml to ${formula_version}"
+if [[ "$current_version" == "$version" ]]; then
+  formula_content="$current_content"
+  core_ref="master"
+  asdf_php_log "using current tap formula (php@${majmin}=${version})"
+else
+  asdf_php_log "version ${version} differs from current tap (${current_version}); resolving historical refs..."
+  read -r tap_ref tap_date < <(asdf_php_history_find_tap_ref "$majmin" "$version")
+  core_ref="$(asdf_php_history_find_core_ref "$tap_date")"
+  formula_content="$(asdf_php_formula_fetch "$majmin" "$tap_ref")"
+  asdf_php_log "tap_ref=${tap_ref:0:8} (${tap_date}); core_ref=${core_ref:0:8}"
 fi
 
 root_url="$(printf '%s' "$formula_content" | asdf_php_formula_bottle_root_url)" \
@@ -60,9 +75,9 @@ asdf_php_log "downloading php@${majmin}=${version} ($bottle_tag) from $php_repo"
 asdf_php_ghcr_fetch_blob "$php_repo" "$bottle_digest" "$php_file"
 printf 'php@%s %s %s %s\n' "$majmin" "$bottle_tag" "$bottle_digest" "$(basename "$php_file")" >> "$manifest"
 
-# 2. Transitive deps
-asdf_php_log "resolving transitive dep DAG..."
-deps_lines="$(printf '%s' "$formula_content" | asdf_php_deps_walk)"
+# 2. Transitive deps (at the contemporary homebrew-core ref)
+asdf_php_log "resolving transitive dep DAG at core ref ${core_ref:0:8}..."
+deps_lines="$(printf '%s' "$formula_content" | asdf_php_deps_walk "$core_ref")"
 dep_count=$(printf '%s' "$deps_lines" | grep -cv '^$' || true)
 asdf_php_log "resolved $dep_count deps; downloading..."
 
