@@ -153,6 +153,40 @@ asdf_php_install_seed_etc() {
   } > "$conf_d/00-asdf-php.ini"
 }
 
+# Drop the latest stable composer phar at <install>/bin/composer so
+# users get `composer` alongside `php` with no extra step. Composer's
+# `#!/usr/bin/env php` shebang picks up our <install>/bin/php wrapper
+# via mise's shim PATH.
+#
+# Opt out by setting ASDF_PHP_BUNDLE_COMPOSER=0. Composer version pins
+# per-project via .tool-versions would need a separate asdf-composer
+# plugin — deliberately out of scope; see TODO.md.
+# Args: <install_path>
+asdf_php_install_bundle_composer() {
+  local install_path="$1"
+
+  if [[ "${ASDF_PHP_BUNDLE_COMPOSER:-1}" == "0" ]]; then
+    return 0
+  fi
+
+  local dest="$install_path/bin/composer"
+  local url="https://getcomposer.org/composer-stable.phar"
+
+  if ! curl -fsSL "$url" -o "$dest" 2>/dev/null; then
+    asdf_php_warn "composer download failed; skipping (set ASDF_PHP_BUNDLE_COMPOSER=0 to silence)"
+    rm -f "$dest"
+    return 0
+  fi
+  chmod +x "$dest"
+
+  # Probe version through our wrapper so composer's `env php` shebang
+  # doesn't accidentally pick up an unrelated system PHP mid-install.
+  local ver
+  ver="$("$install_path/bin/php" "$dest" --version 2>/dev/null | awk '/^Composer/ {print $3; exit}')" \
+    || ver="(unknown)"
+  asdf_php_log "bundled composer $ver"
+}
+
 # Sanity-check: php --version runs and reports the expected version.
 # Args: <install_path> <expected_version>
 asdf_php_install_verify() {

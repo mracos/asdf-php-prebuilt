@@ -39,6 +39,15 @@ commit:
 mise install php@8.1.27   # any patch that's ever been in the tap
 ```
 
+Every install also bundles the latest stable [Composer](https://getcomposer.org)
+at `<install>/bin/composer`. Nothing extra to do:
+
+```sh
+mise exec php -- composer --version
+```
+
+To skip the composer bundle: `ASDF_PHP_BUNDLE_COMPOSER=0 mise install php@…`.
+
 ## What `mise install` does under the hood
 
 1. Read `Formula/php@<MAJMIN>.rb` from the tap. If the requested patch

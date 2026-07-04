@@ -48,4 +48,5 @@ asdf_php_log "staging default config to etc/..."
 asdf_php_install_seed_etc "$ASDF_INSTALL_PATH" "$majmin"
 
 asdf_php_install_verify "$ASDF_INSTALL_PATH" "$version"
+asdf_php_install_bundle_composer "$ASDF_INSTALL_PATH"
 asdf_php_log "installed php $version to $ASDF_INSTALL_PATH"
