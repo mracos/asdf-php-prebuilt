@@ -63,17 +63,34 @@ mise exec php -- asdf-php-ext enable opcache
 mise exec php -- asdf-php-ext disable opcache
 ```
 
-To add a shared extension that isn't in the bottle (redis, xdebug,
-igbinary, msgpack, ...), compile it with pecl and enable it:
+To add a shared extension that isn't bundled (redis, xdebug,
+igbinary, msgpack, ...), pull the prebuilt bottle from
+`shivammathur/homebrew-extensions`:
+
+```sh
+mise exec php -- asdf-php-ext install redis
+```
+
+This downloads the extension bottle and its ext-tap sibling deps
+(e.g. redis pulls in igbinary + msgpack), stages every `.so` in the
+unified ext dir, relocates placeholders, writes the `50-*.ini`
+files, and verifies `php -m` loads them all. If verification fails
+(usually a missing runtime dylib the walker didn't catch, see
+[known limitations](#known-limitations)) the install rolls itself
+back so `php` stays runnable.
+
+The pecl compile path also works for extensions that aren't in the
+tap:
 
 ```sh
 mise exec php -- pecl install redis
 mise exec php -- asdf-php-ext enable redis
 ```
 
-The `.so` lands at `<install>/opt/php@<MAJMIN>/pecl/<api>/`, and enable
-writes `<install>/etc/php/<MAJMIN>/conf.d/50-<name>.ini`. Extension
-uninstall / disable removes the ini file only; the `.so` stays on disk.
+Either path lands the `.so` at `<install>/opt/php@<MAJMIN>/pecl/<api>/`
+and writes `<install>/etc/php/<MAJMIN>/conf.d/50-<name>.ini`.
+`disable` removes the ini file only; the `.so` stays on disk so
+`enable` can bring it back.
 
 The conf.d layout is:
 
