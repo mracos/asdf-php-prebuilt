@@ -244,7 +244,10 @@ cmd_install() {
   # base install (openssl, gettext, etc.), the dep walker skipped them
   # via skip_set and there's nothing extra to enable — they're just
   # dylibs, not PHP extensions.
-  local ext_so_src stage_name
+  # Track every extension we stage so a failed verify can roll back
+  # every change atomically. Leaving a bad extension in conf.d would
+  # segfault every subsequent `php -m` invocation.
+  local -a staged=()
   _stage_ext_so() {
     local formula_name="$1" load_name="$2"
     local so
@@ -255,6 +258,14 @@ cmd_install() {
     }
     cp "$so" "$ext_dir/${load_name}.so"
     cmd_enable "$load_name"
+    staged+=("$load_name")
+  }
+
+  _rollback_stages() {
+    local n
+    for n in ${staged[@]+"${staged[@]}"}; do
+      rm -f "$ext_dir/${n}.so" "$conf_d/50-${n}.ini"
+    done
   }
 
   # 1. sibling ext-tap deps first (so they load before the primary
@@ -264,12 +275,12 @@ cmd_install() {
     [[ "$dep_ident" == shivammathur/extensions/* ]] || continue
     # dep_ident is `shivammathur/extensions/<formula>@<majmin>`;
     # formula = `<load-name>@<majmin>` where load-name may be prefixed
-    # with `php` (phpredis) — but for the deps we've seen so far
+    # with `php` (phpredis), but for the deps we've seen so far
     # (igbinary, msgpack), load-name matches the formula base.
     dep_load="${dep_ident#shivammathur/extensions/}"
     dep_load="${dep_load%@*}"
-    # phpredis → redis case is only for the top-level, not the deps;
-    # both igbinary and msgpack keep their name in the tap and as .so.
+    # phpredis → redis case is only for the top-level, not the deps.
+    # Both igbinary and msgpack keep their name in the tap and as .so.
     _stage_ext_so "${dep_ident#shivammathur/extensions/}" "$dep_load"
   done <<< "$deps_lines"
 
@@ -277,14 +288,32 @@ cmd_install() {
   # formula was `phpredis@8.1`; the .so is always `<name>.so`.
   _stage_ext_so "$ext_formula_name" "$name"
 
-  # Verify: php -m should list it.
-  if ! "$prefix/bin/php" -m 2>/dev/null | grep -qiE "^${name}$"; then
-    echo "asdf-php-ext: installed and enabled but php -m doesn't list ${name}" >&2
-    echo "asdf-php-ext: check php -m and check for missing dylib deps via otool -L $ext_dir/${name}.so" >&2
+  # Verify: `php -m` must exit 0 AND list the extension. Extensions
+  # with missing runtime deps (e.g. imagick without a fully-staged
+  # imagemagick + libheif + libde265 + x265 + ... chain) may segfault
+  # here rather than just fail to load, so we check both the exit
+  # status and the output.
+  local m_out m_status
+  m_out="$("$prefix/bin/php" -m 2>&1)" || m_status=$?
+  m_status="${m_status:-0}"
+
+  if [[ "$m_status" -ne 0 ]]; then
+    echo "asdf-php-ext: php -m failed (exit $m_status) after enabling ${name}" >&2
+    echo "asdf-php-ext: this usually means a required dylib isn't present or isn't relocated." >&2
+    echo "asdf-php-ext: rolling back ${#staged[@]} staged extension(s) to keep php runnable" >&2
+    _rollback_stages
+    echo "asdf-php-ext: check missing deps with: otool -L <staged>.so" >&2
     exit 1
   fi
 
-  echo "installed ${name} @ $(basename "$ext_so_src")"
+  if ! printf '%s\n' "$m_out" | grep -qiE "^${name}$"; then
+    echo "asdf-php-ext: ${name}.so was enabled but php -m doesn't list it" >&2
+    echo "asdf-php-ext: rolling back ${#staged[@]} staged extension(s)" >&2
+    _rollback_stages
+    exit 1
+  fi
+
+  echo "installed ${name}"
 }
 
 case "${1:-list}" in
