@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# asdf-php-ext — enable/disable/list PHP extensions in this install prefix.
+#
+# Auto-detected paths (from this script's location):
+#   <prefix>/opt/php@<MAJMIN>/lib/php/<API>/*.so   — extension binaries
+#   <prefix>/etc/php/<MAJMIN>/conf.d/*.ini         — extension registrations
+#
+# Convention:
+#   00-asdf-php.ini      → extension_dir (do not touch)
+#   10-<name>.ini        → bundled by asdf-php at install time
+#   50-<name>.ini        → enabled by the user via `enable`
+#
+# `disable` removes 50-<name>.ini or 10-<name>.ini. It refuses to touch
+# 00-*.ini (that's the extension_dir).
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+prefix="$(dirname "$script_dir")"
+
+# Auto-detect majmin from <prefix>/opt/php@*.
+majmin=""
+for opt_dir in "$prefix/opt"/php@*; do
+  [[ -d "$opt_dir" ]] || continue
+  majmin="${opt_dir##*@}"
+  break
+done
+if [[ -z "$majmin" ]]; then
+  echo "asdf-php-ext: no php@* under $prefix/opt/" >&2
+  exit 1
+fi
+
+php_lib="$prefix/opt/php@${majmin}/lib/php"
+api_ver=""
+for d in "$php_lib"/[0-9]*; do
+  [[ -d "$d" ]] || continue
+  api_ver="${d##*/}"
+  break
+done
+if [[ -z "$api_ver" ]]; then
+  echo "asdf-php-ext: no api-version dir under $php_lib" >&2
+  exit 1
+fi
+ext_dir="$php_lib/$api_ver"
+conf_d="$prefix/etc/php/${majmin}/conf.d"
+
+# Given <name>, return zend_extension or extension.
+_directive_for() {
+  case "$1" in
+    opcache|xdebug|xhprof|blackfire) echo zend_extension ;;
+    *)                               echo extension ;;
+  esac
+}
+
+# Return the ini file that currently registers <name>, or empty if none.
+_ini_for() {
+  local name="$1" ini
+  for ini in "$conf_d"/[0-9]*-"${name}".ini; do
+    [[ -f "$ini" ]] && { echo "$ini"; return 0; }
+  done
+  return 1
+}
+
+cmd_list() {
+  local so name ini status
+  for so in "$ext_dir"/*.so; do
+    [[ -e "$so" ]] || continue
+    name="$(basename "$so" .so)"
+    if ini="$(_ini_for "$name")"; then
+      status="enabled  (${ini##*/})"
+    else
+      status="available"
+    fi
+    printf '%-20s %s\n' "$name" "$status"
+  done
+}
+
+cmd_enable() {
+  local name="${1:?usage: asdf-php-ext enable <name>}"
+  local so_path="$ext_dir/${name}.so"
+  if [[ ! -f "$so_path" ]]; then
+    echo "asdf-php-ext: no .so at $so_path" >&2
+    echo "asdf-php-ext: try \`asdf-php-ext list\` to see available extensions" >&2
+    exit 1
+  fi
+  if ini="$(_ini_for "$name")"; then
+    echo "already enabled: ${ini##*/}"
+    return 0
+  fi
+  mkdir -p "$conf_d"
+  local ini="$conf_d/50-${name}.ini"
+  printf '%s=%s.so\n' "$(_directive_for "$name")" "$name" > "$ini"
+  echo "enabled ${name} via ${ini##*/}"
+}
+
+cmd_disable() {
+  local name="${1:?usage: asdf-php-ext disable <name>}"
+  local ini
+  if ! ini="$(_ini_for "$name")"; then
+    echo "not enabled: ${name}" >&2
+    exit 1
+  fi
+  case "${ini##*/}" in
+    00-*)
+      echo "asdf-php-ext: refusing to remove ${ini##*/} (extension_dir bootstrap)" >&2
+      exit 1
+      ;;
+  esac
+  rm "$ini"
+  echo "disabled ${name} (removed ${ini##*/})"
+}
+
+case "${1:-list}" in
+  list)    cmd_list ;;
+  enable)  shift; cmd_enable "$@" ;;
+  disable) shift; cmd_disable "$@" ;;
+  -h|--help|help)
+    cat <<USAGE
+usage: asdf-php-ext <command> [args]
+
+commands:
+  list                     list all .so files with enabled/disabled status
+  enable <name>            create <conf.d>/50-<name>.ini
+  disable <name>           remove the ini file that registers <name>
+
+files:
+  <prefix>/opt/php@${majmin}/lib/php/${api_ver}/*.so       — .so files
+  <prefix>/etc/php/${majmin}/conf.d/                     — ini files
+USAGE
+    ;;
+  *)
+    echo "asdf-php-ext: unknown command: $1" >&2
+    echo "run \`asdf-php-ext --help\` for usage" >&2
+    exit 1
+    ;;
+esac

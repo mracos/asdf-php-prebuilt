@@ -137,10 +137,14 @@ asdf_php_relocate_text_scripts() {
   # them at runtime.
   while IFS= read -r f; do
     asdf_php_is_macho "$f" && continue
-    # Skip .phar archives — they carry a manifest with byte offsets that
-    # sed'd shift, corrupting the archive.
+    # .phar archives can't be rewritten at all: the whole file is
+    # SHA1-signed at the tail (Phar's built-in integrity check). Even a
+    # shebang tweak invalidates `Phar::mapPhar()`. Leave the placeholder
+    # in place and have the top-level `bin/phar` wrapper invoke
+    # `php phar.phar` directly, bypassing the shebang entirely.
     [[ "$f" == *.phar ]] && continue
     grep -qF '@@HOMEBREW_' "$f" 2>/dev/null || continue
+
     # LC_ALL=C so BSD sed treats bytes as bytes (some scripts contain
     # non-UTF-8 payloads and locale-aware sed rejects them).
     LC_ALL=C sed -i '' \
