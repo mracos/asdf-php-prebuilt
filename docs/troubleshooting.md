@@ -44,6 +44,35 @@ or pick the patch version the current tap pins (`mise ls-remote php`
 shows what HEAD has) and you stay on the fast path that doesn't need
 `gh`.
 
+## "failed loading cafile stream" when PHP makes HTTPS requests
+
+`composer` (or any script using PHP's SSL streams) fails with
+
+```
+Warning: failed loading cafile stream: `<install>/etc/openssl@3/cert.pem'
+Warning: copy(): Failed to enable crypto
+```
+
+PHP's `openssl.cafile` was originally pointed at
+`@@HOMEBREW_PREFIX@@/etc/openssl@3/cert.pem`, which our placeholder
+rewrite turns into `<install>/etc/openssl@3/cert.pem`. That file
+comes from the `ca-certificates` brew formula, which is data-only
+with no bottle (we skip it during `bin/download`).
+
+The plugin now symlinks `<install>/etc/openssl@3/cert.pem` to the
+macOS system cert bundle (`/etc/ssl/cert.pem`) during install. Older
+installs done before this fix need it patched by hand:
+
+```sh
+inst=~/.local/share/mise/installs/php/<version>
+mkdir -p "$inst/etc/openssl@3"
+ln -sf /etc/ssl/cert.pem "$inst/etc/openssl@3/cert.pem"
+ln -sf /etc/ssl/certs    "$inst/etc/openssl@3/certs"
+```
+
+Or `mise uninstall php@<version> && mise install php@<version>` to
+regenerate the install with the fix applied.
+
 ## "Symbol not found: _SSL_CIPHER_get_bits" (or similar) after install
 
 Usually means a dep bottle's ABI doesn't match what PHP / libpq /

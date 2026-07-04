@@ -111,7 +111,21 @@ asdf_php_install_seed_etc() {
         -e "s|@@HOMEBREW_PREFIX@@|${install_path}|g" \
         -e "s|@@HOMEBREW_CELLAR@@|${install_path}/Cellar|g" {}
 
-  # 3. Generate conf.d/00-asdf-php.ini for the bottle's shared extensions
+  # 3. openssl cert bundle. PHP's php.ini contains
+  #      openssl.cafile = "@@HOMEBREW_PREFIX@@/etc/openssl@3/cert.pem"
+  #    which we rewrote to <install>/etc/openssl@3/cert.pem — but that
+  #    file doesn't exist because ca-certificates is a data-only formula
+  #    with no bottle (we skip it in bin/download). brew's own
+  #    openssl@3 post_install falls back to symlinking macOS system
+  #    certs; do the same. Without this, composer / any PHP SSL client
+  #    fails with "failed loading cafile stream".
+  if [[ -r /etc/ssl/cert.pem && ! -e "$install_path/etc/openssl@3/cert.pem" ]]; then
+    mkdir -p "$install_path/etc/openssl@3"
+    ln -snf /etc/ssl/cert.pem  "$install_path/etc/openssl@3/cert.pem"
+    ln -snf /etc/ssl/certs     "$install_path/etc/openssl@3/certs"
+  fi
+
+  # 4. Generate conf.d/00-asdf-php.ini for the bottle's shared extensions
   local php_lib api_ver ext_dir
   php_lib="$install_path/opt/php@${majmin}/lib/php"
   api_ver="$(find "$php_lib" -maxdepth 1 -type d -name '[0-9]*' -exec basename {} \; | head -1)"
