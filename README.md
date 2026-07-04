@@ -179,6 +179,13 @@ install older bottles via forward compatibility.
   install imagick` will fail if it can't find `MagickWand`, for
   example. Long-term direction: pull prebuilt extension bottles from
   `shivammathur/homebrew-extensions` (in progress).
+- `asdf-php-ext install imagick` fetches the bottle chain but
+  imagick's runtime graph (imagemagick, libheif, libde265, x265,
+  freetype, jbig, tiff, cairo, pango, ghostscript, ...) exceeds what
+  the current dep walker resolves. The install rolls itself back
+  cleanly on the resulting segfault so PHP stays runnable, but the
+  extension doesn't load. Track:
+  [TODO.md](TODO.md#full-dep-chain-for-heavy-c-extensions).
 
 ## Testing
 

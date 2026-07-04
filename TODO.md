@@ -4,6 +4,39 @@ Explicitly deferred work. Each bullet is in scope someday, just not
 right now. Ordered loosely by likely value, not by when they'll
 happen.
 
+## Full dep chain for heavy C extensions
+
+<a id="full-dep-chain-for-heavy-c-extensions"></a>
+`asdf-php-ext install imagick` currently pulls the imagick + imagemagick
++ libomp + libheif + libde265 + x265 bottles and stops. imagick.so
+links against libraries buried deeper (jbig, tiff, lcms, freetype,
+pango, cairo, ghostscript, and probably more) that we don't fetch.
+Result: dyld exits non-zero on `php -m`, cmd_install detects it, and
+rolls back. imagick just isn't installable through this path.
+
+Two mechanisms to fix. Either:
+
+1. Fully walk homebrew-core deps of ext-tap formulas. `deps_walk_ext`
+   already recurses through the tap side; the missing piece is
+   pushing homebrew-core deps' own `depends_on` chains, not just
+   their bottles. That means switching from "resolve one level"
+   to full transitive walk on the homebrew-core side too, with
+   dedup + cycle protection.
+2. Post-install dyld scan: `otool -L` each staged `.so`, walk the
+   `@loader_path/../../../../opt/<X>/lib/<Y>.dylib` targets, verify
+   each exists, fetch the missing ones. Simpler code, roughly the
+   same effect. Doesn't reuse the tap formula's `depends_on` info.
+
+Approach 2 is probably the smaller change. Approach 1 keeps the
+formula file as single source of truth. Pick when someone actually
+needs imagick.
+
+Symptom to guard against: `php -m` segfaulting mid-install. The
+rollback in `cmd_install` catches it today; adding a regression test
+requires an intentionally-broken .so (fake shared lib with an
+unresolvable LC_LOAD_DYLIB entry) instead of relying on imagick
+specifically since its dep tree changes over time.
+
 ## Extension install from the tap (scaffolded, unverified)
 
 `bin/asdf-php-ext install <name>` currently exists in

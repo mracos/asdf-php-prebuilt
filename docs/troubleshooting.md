@@ -182,6 +182,44 @@ To silence for a specific pecl run, redirect stderr:
 mise exec php -- pecl install X 2>&1 | grep -v 'unserialize()'
 ```
 
+## `asdf-php-ext install imagick` errors with "php -m failed (exit N)"
+
+Symptom, after running `asdf-php-ext install imagick`:
+
+```
+asdf-php: relocated N Mach-O files
+enabled imagick via 50-imagick.ini
+asdf-php-ext: php -m failed (exit 139) after enabling imagick
+asdf-php-ext: this usually means a required dylib isn't present or isn't relocated.
+asdf-php-ext: rolling back 1 staged extension(s) to keep php runnable
+asdf-php-ext: check missing deps with: otool -L <staged>.so
+```
+
+The plugin's rollback removes `50-imagick.ini` and the staged
+`imagick.so` before exiting. `php -m` and `composer` should work
+again immediately after.
+
+Root cause: `imagick.so` links against MagickWand + MagickCore
+(from `imagemagick`), which in turn depend on libheif, libde265,
+x265, freetype, cairo, pango, ghostscript, and a long tail of image
+codecs. The current dep walker doesn't resolve the full transitive
+graph for tap-linked C libraries, so a few dylibs go missing at
+runtime and dyld exits non-zero, which surfaces as a segfault.
+
+Workarounds:
+
+- Skip imagick locally. Most Laravel projects can substitute GD
+  (bundled statically in every 8.x install) for basic image work.
+- If you need imagick and have Homebrew already, run
+  `brew install imagick@8.1` in the shivammathur tap and let brew's
+  full opt-tree resolve. That extension `.so` won't work through
+  asdf-php's install (baked-in Cellar path is wrong), but a `pecl
+  install imagick` against brew's imagemagick can — messy but
+  documented.
+
+The right fix is expanding the walker to catch nested homebrew-core
+deps of ext-tap formulas. Tracked in [TODO.md](../TODO.md).
+
 ## Clearing all cache
 
 ```sh
