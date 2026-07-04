@@ -1,24 +1,41 @@
 # TODO
 
-Explicitly deferred work. Each bullet is in scope someday — just not
+Explicitly deferred work. Each bullet is in scope someday, just not
 right now. Ordered loosely by likely value, not by when they'll
 happen.
 
-## PHP extensions support
+## Extension install from the tap (scaffolded, unverified)
 
-The shivammathur tap also publishes pre-built PHP extensions:
-`phpredis@<MAJMIN>`, `igbinary@<MAJMIN>`, `msgpack@<MAJMIN>`,
-`xdebug@<MAJMIN>`, plus a couple dozen more, in
-`shivammathur/homebrew-extensions`.
+`bin/asdf-php-ext install <name>` currently exists in
+`share/asdf-php-ext` but hasn't been exercised end to end against a
+real formula. Wiring: parse `Formula/<name>@<MAJMIN>.rb` from
+`shivammathur/homebrew-extensions`, walk transitive deps
+(tap-scoped and homebrew-core), reuse the plugin's GHCR + relocate
+machinery, drop the `.so` in the unified pecl dir, enable via the
+existing user path.
 
-Shape: `mise install php-ext-redis@8.1` (or per-php sub-tools, or
-`[ext]` config in `mise.toml`). Reuses the same bottle pull, dep
-walk, relocate, codesign machinery. The new bit is: each extension
-gets a `<ext>.ini` synthesized in
-`<php-install>/etc/php/<MAJMIN>/conf.d/` pointing at its `.so`.
+For extensions with C dependencies not in homebrew-core (imagick →
+imagemagick), the current shape may not resolve everything. Test
+with `xdebug@8.1` (no external C deps), `igbinary@8.1`,
+`msgpack@8.1` first.
 
-Probably the most impactful next iteration since Laravel projects
-typically need `phpredis` + `igbinary` + `msgpack`.
+Also: `.mise.toml`-driven declarative installs via `ASDF_PHP_EXTS`
+env var, so `mise install php@X` auto-installs the extensions a
+project declares.
+
+## PEAR registry (.reg) length prefixes
+
+pecl / pear emit
+`unserialize(): Error at offset N of M bytes in PEAR/Registry.php`
+notices on operations that touch the registry. The `.reg` files
+under `<install>/share/php@<MAJMIN>/pear/.registry/` are
+PHP-serialized like `pear.conf` and their `s:N:"..."` length
+prefixes drift after our sed rewrite. Non-fatal but noisy.
+
+`bin/install`'s `seed_etc` already runs the perl length-fix pass
+over `pear.conf`. Extending it to walk
+`Cellar/php@<MAJMIN>/*/share/php@<MAJMIN>/pear/.registry/*.reg` and
+apply the same fix would silence these.
 
 ## GH Actions CI
 

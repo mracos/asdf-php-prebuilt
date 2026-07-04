@@ -21,7 +21,7 @@
 
 load ../helpers
 
-INSTALL="$HOME/.local/share/mise/installs/php/8.1.27"
+INSTALL="$(any_php_81_install)"
 
 setup() {
   require_install "$INSTALL"

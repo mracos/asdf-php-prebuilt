@@ -7,6 +7,7 @@
     "test": "bats test/unit",
     "test:unit": "bats test/unit",
     "test:regression": "bats test/regression",
+    "test:integration": "ASDF_PHP_RUN_INTEGRATION=1 bats test/integration",
     "test:all": "bats test/unit test/regression"
   },
   "devDependencies": {

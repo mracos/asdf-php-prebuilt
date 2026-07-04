@@ -133,6 +133,55 @@ PHP_INI_SCAN_DIR=/path/to/your/conf.d <install>/bin/php script.php
 `PHP_INI_SCAN_DIR` is honored if set; the wrapper only assigns a
 default.
 
+## `pecl install X` succeeds but `asdf-php-ext enable X` says "no .so at ..."
+
+Symptom:
+
+```
+$ mise exec php -- pecl install redis
+install ok: channel://pecl.php.net/redis-6.2.0
+$ mise exec php -- asdf-php-ext enable redis
+asdf-php-ext: no .so at <install>/opt/php@8.1/lib/php/20210902/redis.so
+```
+
+Root cause: your install predates the unified `extension_dir` fix.
+brew's PHP keg has two extension directories (`lib/php/<api>/` for
+bundled `.so` files, `pecl/<api>/` for pecl-compiled `.so` files) and
+`php-config --extension-dir` reports the latter. Without our
+unification, the two dirs diverge.
+
+Fix: reinstall. `mise uninstall php@<version> && mise install
+php@<version>`. The current bin/install symlinks bundled `.so` files
+into `pecl/<api>/`, so both live in one directory (matching what pecl
+uses).
+
+## `pecl config-get ext_dir` returns `/opt/homebrew/lib/php/pecl/...`
+
+pecl is reading brew's `pear.conf` instead of ours. Two possible
+causes:
+
+1. The wrapper isn't exporting `PHP_PEAR_SYSCONF_DIR`. Reinstall to
+   pick up the current wrapper.
+2. A stale `~/.pearrc` (per-user PEAR config) is overriding. Check
+   with `ls ~/.pearrc`. If it exists and points at brew paths, remove
+   it: `rm ~/.pearrc`.
+
+## `unserialize(): Error at offset N of M bytes in PEAR/Registry.php`
+
+pecl / pear emits these as `Notice:` during install. Non-fatal. The
+extension still compiles and installs. The `.reg` files under
+`<install>/share/php@<MAJMIN>/pear/.registry/` are PHP-serialized
+and their `s:N:"..."` length prefixes drifted when we sed-rewrote
+their path values. `pear.conf` gets a perl length-fix pass in
+`bin/install`; the `.reg` files don't yet. Track:
+[TODO.md](../TODO.md) "PEAR registry length prefixes".
+
+To silence for a specific pecl run, redirect stderr:
+
+```sh
+mise exec php -- pecl install X 2>&1 | grep -v 'unserialize()'
+```
+
 ## Clearing all cache
 
 ```sh
