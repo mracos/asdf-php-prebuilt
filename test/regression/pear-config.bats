@@ -53,3 +53,30 @@ setup() {
   [[ "$loaded_line" == *"$INSTALL"* ]] \
     || { echo "PHP loading foreign ini: $loaded_line"; false; }
 }
+
+@test "pecl config_get returns paths inside our install (not brew's)" {
+  # pear.conf is PHP-serialized. Our sed rewrites value paths but not
+  # the `s:N:` length prefixes; a stray reinstall that skips the perl
+  # length-fix leaves pear.conf corrupt, PEAR falls back to compiled-in
+  # defaults (brew paths), and `pecl install X` writes .so files into
+  # /opt/homebrew/lib/php/pecl/... — outside our install, invisible to
+  # our extension_dir.
+  run "$INSTALL/bin/pecl" config-get ext_dir
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$INSTALL"/* ]] \
+    || { echo "pecl ext_dir escaped our install: $output"; false; }
+  [[ ! "$output" =~ "/opt/homebrew" ]] \
+    || { echo "pecl ext_dir points at brew: $output"; false; }
+}
+
+@test "pecl config_get php_dir + php_bin also live inside our install" {
+  run "$INSTALL/bin/pecl" config-get php_dir
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$INSTALL"/* ]] \
+    || { echo "pecl php_dir escaped: $output"; false; }
+
+  run "$INSTALL/bin/pecl" config-get php_bin
+  [ "$status" -eq 0 ]
+  [[ "$output" == "$INSTALL"/* ]] \
+    || { echo "pecl php_bin escaped: $output"; false; }
+}

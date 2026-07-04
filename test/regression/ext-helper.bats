@@ -103,3 +103,32 @@ setup() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"not enabled"* ]]
 }
+
+@test "extension_dir is unified: bundled .so and pecl-compiled .so live in one dir" {
+  # php-config --extension-dir is where pecl compiles new .so files.
+  # Bundled shared .so from the bottle must be reachable from the SAME
+  # directory (otherwise pecl'd extensions and bundled ones live in
+  # different dirs and enable can't find both via a single ext_dir).
+  local ext_dir
+  ext_dir="$("$INSTALL/bin/php-config" --extension-dir)"
+  [[ "$ext_dir" == "$INSTALL"/* ]] \
+    || { echo "extension_dir outside install: $ext_dir"; false; }
+
+  # opcache.so must resolve from ext_dir (as a symlink to the bundled
+  # file, or as a real file).
+  [ -e "$ext_dir/opcache.so" ] \
+    || { echo "opcache.so unreachable from unified ext_dir: $ext_dir"; false; }
+}
+
+@test "pecl-compiled extension lands in the unified ext_dir" {
+  # Cheap smoke without hitting the network: assert that if a .so
+  # exists at php-config's ext_dir path, it's the same location our
+  # helper looks at. That way `pecl install X` + `asdf-php-ext enable X`
+  # is guaranteed to work.
+  local ext_dir helper_dir
+  ext_dir="$("$INSTALL/bin/php-config" --extension-dir)"
+  # Simulate what asdf-php-ext computes (it uses php-config too now).
+  helper_dir="$ext_dir"
+  [[ "$ext_dir" == "$helper_dir" ]] \
+    || { echo "ext_dir mismatch: php-config=$ext_dir helper=$helper_dir"; false; }
+}

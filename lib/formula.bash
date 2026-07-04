@@ -43,6 +43,24 @@ asdf_php_formula_fetch() {
   cat "$cache_file"
 }
 
+# Fetch a formula from shivammathur/homebrew-extensions by name (e.g.
+# "phpredis@8.1", "xdebug@8.1", "igbinary@8.1"). ref defaults to master.
+# Not sharded — the tap keeps every formula at Formula/<name>.rb.
+asdf_php_formula_fetch_ext() {
+  local name="$1" ref="${2:-master}"
+  local safe ref_short cache_file url
+  safe="${name//\//_}"
+  ref_short="${ref:0:12}"
+  cache_file="${ASDF_PHP_CACHE_DIR}/formula-ext-${safe}-${ref_short}.rb"
+  if [[ ! -f "$cache_file" ]]; then
+    mkdir -p "$ASDF_PHP_CACHE_DIR"
+    url="https://raw.githubusercontent.com/shivammathur/homebrew-extensions/${ref}/Formula/${name}.rb"
+    curl -fsSL "$url" -o "$cache_file" 2>/dev/null \
+      || { rm -f "$cache_file"; return 1; }
+  fi
+  cat "$cache_file"
+}
+
 # Fetch a homebrew-core formula by name at a given ref (e.g. "gettext",
 # "openssl@3"). Homebrew-core shards Formula/ by first character of the
 # formula name (lib* under lib/). ref defaults to "master".

@@ -103,15 +103,24 @@ script_dir="\$(cd -- "\$(dirname -- "\${BASH_SOURCE[0]}")" && pwd)"
 prefix="\$(dirname "\$script_dir")"
 export PHPRC="\${PHPRC:-\$prefix/etc/php/${majmin}/php.ini}"
 export PHP_INI_SCAN_DIR="\${PHP_INI_SCAN_DIR:-\$prefix/etc/php/${majmin}/conf.d}"
+# PEAR/pecl reads pear.conf from \$PHP_PEAR_SYSCONF_DIR, else the
+# compile-time PHP_SYSCONFDIR baked into the binary (= /opt/homebrew/etc/php/…
+# from brew's build). Without this, pecl config-get ext_dir returns brew's
+# path and `pecl install X` drops .so files outside our prefix.
+export PHP_PEAR_SYSCONF_DIR="\${PHP_PEAR_SYSCONF_DIR:-\$prefix/etc/php/${majmin}}"
 exec "\$prefix/opt/php@${majmin}/bin/${name}" "\$@"
 WRAPPER
     chmod +x "$install_path/bin/$name"
   done
 
-  # Drop the extension-manager helper alongside php/composer.
+  # Drop the extension-manager helper alongside php/composer, with the
+  # plugin's lib/ path baked in so `asdf-php-ext install` can source
+  # formula/ghcr/relocate/deps at runtime. list/enable/disable stay
+  # self-contained and work even if the plugin is later uninstalled.
   local plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
   if [[ -f "$plugin_dir/share/asdf-php-ext" ]]; then
-    cp "$plugin_dir/share/asdf-php-ext" "$install_path/bin/asdf-php-ext"
+    sed "s|__PLUGIN_LIB_DIR__|${plugin_dir}/lib|" \
+      "$plugin_dir/share/asdf-php-ext" > "$install_path/bin/asdf-php-ext"
     chmod +x "$install_path/bin/asdf-php-ext"
   fi
 }
@@ -139,6 +148,20 @@ asdf_php_install_seed_etc() {
         -e "s|@@HOMEBREW_PREFIX@@|${install_path}|g" \
         -e "s|@@HOMEBREW_CELLAR@@|${install_path}/Cellar|g" {}
 
+  # 2b. pear.conf is PHP-serialized (`a:N:{s:K:"key";s:V:"value";...}`),
+  # not a plain text config. Step 2's sed rewrote path values but not
+  # the `s:V:` length prefixes, so unserialize() silently fails and PEAR
+  # falls back to compiled-in DEFAULTS — which point at brew's paths
+  # (/opt/homebrew/*). That in turn makes `pecl install X` drop the .so
+  # in brew's tree instead of ours, and `asdf-php-ext enable X` can't
+  # find it. Recompute the `s:N:` length prefixes to match the rewritten
+  # values.
+  local pear_conf="$install_path/etc/php/${majmin}/pear.conf"
+  if [[ -f "$pear_conf" ]]; then
+    LC_ALL=C perl -i -pe 's{s:\d+:"([^"]*)"}{"s:".length($1).":\"$1\""}ge' \
+      "$pear_conf"
+  fi
+
   # 3. openssl cert bundle. PHP's php.ini contains
   #      openssl.cafile = "@@HOMEBREW_PREFIX@@/etc/openssl@3/cert.pem"
   #    which we rewrote to <install>/etc/openssl@3/cert.pem — but that
@@ -153,18 +176,35 @@ asdf_php_install_seed_etc() {
     ln -snf /etc/ssl/certs     "$install_path/etc/openssl@3/certs"
   fi
 
-  # 4. Generate conf.d entries for the bottle's shared extensions.
-  #    One file per extension (10-<name>.ini) so `asdf-php-ext disable X`
-  #    can safely rm a single file without touching neighbors. The
-  #    `extension_dir` line lives in a separate 00-asdf-php.ini file.
-  local php_lib api_ver ext_dir
+  # 4. Unify the extension_dir on the pecl/ path.
+  #
+  # brew's PHP keg has TWO extension dirs:
+  #   <keg>/lib/php/<api>/   — bundled shared .so (opcache, intl, ...)
+  #   <keg>/pecl/<api>/      — where `pecl install X` compiles new .so
+  # `php-config --extension-dir` (which pecl reads) reports the pecl/
+  # path. So without intervention: pecl installs land in pecl/, our
+  # extension_dir points at lib/php/, PHP loads bundled extensions but
+  # not pecl'd ones, and `asdf-php-ext enable X` for a pecl'd extension
+  # fails to find its .so.
+  # brew papers over this by symlinking <prefix>/lib/php/pecl/<api> →
+  # <keg>/pecl/<api> during post_install. We do the equivalent locally:
+  # symlink bundled .so files into pecl/<api>/ and set extension_dir
+  # there. One dir, both origins.
+  local php_lib api_ver ext_dir pecl_dir
   php_lib="$install_path/opt/php@${majmin}/lib/php"
   api_ver="$(find "$php_lib" -maxdepth 1 -type d -name '[0-9]*' -exec basename {} \; | head -1)"
   if [[ -z "$api_ver" ]]; then
     asdf_php_warn "could not find php extension API dir under $php_lib"
     return 0
   fi
-  ext_dir="$php_lib/$api_ver"
+  pecl_dir="$install_path/opt/php@${majmin}/pecl/${api_ver}"
+  mkdir -p "$pecl_dir"
+  local bundled_so
+  for bundled_so in "$php_lib/$api_ver"/*.so; do
+    [[ -e "$bundled_so" ]] || continue
+    ln -snf "../../lib/php/${api_ver}/${bundled_so##*/}" "$pecl_dir/${bundled_so##*/}"
+  done
+  ext_dir="$pecl_dir"
 
   local conf_d="$install_path/etc/php/${majmin}/conf.d"
   mkdir -p "$conf_d"

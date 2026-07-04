@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# asdf-php-ext — enable/disable/list PHP extensions in this install prefix.
+# asdf-php-ext — manage PHP extensions in this install prefix.
 #
 # Auto-detected paths (from this script's location):
 #   <prefix>/opt/php@<MAJMIN>/lib/php/<API>/*.so   — extension binaries
@@ -8,12 +8,23 @@
 # Convention:
 #   00-asdf-php.ini      → extension_dir (do not touch)
 #   10-<name>.ini        → bundled by asdf-php at install time
-#   50-<name>.ini        → enabled by the user via `enable`
+#   50-<name>.ini        → enabled by the user via `enable` / `install`
 #
 # `disable` removes 50-<name>.ini or 10-<name>.ini. It refuses to touch
 # 00-*.ini (that's the extension_dir).
+#
+# `install <name>` pulls the prebuilt bottle from
+# shivammathur/homebrew-extensions, drops the .so at ext_dir, relocates
+# placeholders, and enables it — one command instead of pecl-compile +
+# enable. Requires the plugin's lib/ available at PLUGIN_LIB_DIR (baked
+# in by bin/install at install-time).
 
 set -euo pipefail
+
+# Baked at install-time by lib/install.bash. Points at the plugin's
+# lib/ dir for the heavy fetch/relocate machinery. If empty, `install`
+# won't work (list/enable/disable still do — self-contained).
+PLUGIN_LIB_DIR="${PLUGIN_LIB_DIR:-__PLUGIN_LIB_DIR__}"
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 prefix="$(dirname "$script_dir")"
@@ -30,18 +41,19 @@ if [[ -z "$majmin" ]]; then
   exit 1
 fi
 
-php_lib="$prefix/opt/php@${majmin}/lib/php"
-api_ver=""
-for d in "$php_lib"/[0-9]*; do
-  [[ -d "$d" ]] || continue
-  api_ver="${d##*/}"
-  break
-done
-if [[ -z "$api_ver" ]]; then
-  echo "asdf-php-ext: no api-version dir under $php_lib" >&2
+# Extension dir is whatever `php-config --extension-dir` reports —
+# same value pecl uses. brew's build bakes that in as <keg>/pecl/<api>,
+# and install.bash symlinks bundled .so files there too so this is
+# one unified directory. Ask php-config rather than guessing.
+if ! ext_dir="$("$prefix/bin/php-config" --extension-dir 2>/dev/null)"; then
+  echo "asdf-php-ext: \`php-config --extension-dir\` failed" >&2
   exit 1
 fi
-ext_dir="$php_lib/$api_ver"
+if [[ ! -d "$ext_dir" ]]; then
+  echo "asdf-php-ext: extension_dir does not exist: $ext_dir" >&2
+  exit 1
+fi
+api_ver="${ext_dir##*/}"
 conf_d="$prefix/etc/php/${majmin}/conf.d"
 
 # Given <name>, return zend_extension or extension.
@@ -110,18 +122,187 @@ cmd_disable() {
   echo "disabled ${name} (removed ${ini##*/})"
 }
 
+# Pull a prebuilt PHP extension from shivammathur/homebrew-extensions,
+# stage its .so + relocate it, and enable it. Reuses the plugin's
+# formula/ghcr/deps/relocate machinery via PLUGIN_LIB_DIR.
+cmd_install() {
+  local name="${1:?usage: asdf-php-ext install <name>}"
+
+  if [[ -z "$PLUGIN_LIB_DIR" || ! -d "$PLUGIN_LIB_DIR" ]]; then
+    echo "asdf-php-ext: PLUGIN_LIB_DIR not set or missing ($PLUGIN_LIB_DIR)" >&2
+    echo "asdf-php-ext: the plugin was uninstalled after this php install; re-add it via 'mise plugin link php <path>'" >&2
+    exit 1
+  fi
+
+  # shellcheck source=/dev/null
+  source "$PLUGIN_LIB_DIR/utils.bash"
+  # shellcheck source=/dev/null
+  source "$PLUGIN_LIB_DIR/formula.bash"
+  # shellcheck source=/dev/null
+  source "$PLUGIN_LIB_DIR/ghcr.bash"
+  # shellcheck source=/dev/null
+  source "$PLUGIN_LIB_DIR/deps.bash"
+  # shellcheck source=/dev/null
+  source "$PLUGIN_LIB_DIR/relocate.bash"
+
+  # Formula name is usually `<name>@<MAJMIN>`, but some extensions use a
+  # `php<name>` prefix in the tap (e.g. `redis` → `phpredis@8.1`).
+  # Try the direct form first, fall back to the prefixed one.
+  local ext_formula_name="${name}@${majmin}"
+  local content
+  if ! content="$(asdf_php_formula_fetch_ext "$ext_formula_name" 2>/dev/null)"; then
+    ext_formula_name="php${name}@${majmin}"
+    if ! content="$(asdf_php_formula_fetch_ext "$ext_formula_name" 2>/dev/null)"; then
+      echo "asdf-php-ext: no ext formula '${name}@${majmin}' or 'php${name}@${majmin}' in shivammathur/homebrew-extensions" >&2
+      echo "asdf-php-ext: check https://github.com/shivammathur/homebrew-extensions/tree/master/Formula for available extensions" >&2
+      exit 1
+    fi
+  fi
+
+  local root_url
+  root_url="$(printf '%s' "$content" | asdf_php_formula_bottle_root_url)" \
+    || root_url="https://ghcr.io/v2/shivammathur/extensions"
+
+  local tag digest
+  if ! read -r tag digest < <(printf '%s' "$content" | asdf_php_formula_bottle_resolve); then
+    echo "asdf-php-ext: no bottle for '${ext_formula_name}' on $(asdf_php_host_tag) (or fallbacks)" >&2
+    exit 1
+  fi
+
+  # What's already in Cellar/ (skip re-fetching those transitively).
+  local skip_set=""
+  local cellar_dir
+  for cellar_dir in "$prefix/Cellar"/*; do
+    [[ -d "$cellar_dir" ]] || continue
+    skip_set="${skip_set}${cellar_dir##*/}"$'\n'
+  done
+
+  # Walk transitive deps (extensions in shivammathur/extensions +
+  # unqualified deps in homebrew-core).
+  local deps_lines
+  deps_lines="$(printf '%s' "$content" | asdf_php_deps_walk_ext "$majmin" "$skip_set")"
+
+  # Download main ext bottle + all deps into a scratch dir.
+  local tmp
+  tmp="$(mktemp -d)"
+  trap "rm -rf '$tmp'" EXIT
+
+  local ext_repo="$(asdf_php_ghcr_repo_path "$root_url" "$ext_formula_name")"
+  local ext_file="$tmp/${ext_formula_name//\//_}-${tag}.tar.gz"
+  asdf_php_log "downloading ${ext_formula_name} (${tag}) from ${ext_repo}"
+  asdf_php_ghcr_fetch_blob "$ext_repo" "$digest" "$ext_file"
+
+  local dep_full dep_url dep_tag dep_digest dep_repo dep_file dep_formula
+  while IFS=' ' read -r dep_full dep_url dep_tag dep_digest; do
+    [[ -z "$dep_full" ]] && continue
+    # asdf_php_ghcr_repo_path joins root_url's path with the formula
+    # name. For sibling-ext deps, deps_walk_ext emits `shivammathur/
+    # extensions/<name>@<majmin>` as the qualified id (so we can route
+    # them to the ext-tap fetcher); strip that qualifier here before
+    # asking for the GHCR path, or we double-prefix.
+    dep_formula="${dep_full#shivammathur/extensions/}"
+    dep_repo="$(asdf_php_ghcr_repo_path "$dep_url" "$dep_formula")"
+    dep_file="$tmp/dep-${dep_full//\//_}-${dep_tag}.tar.gz"
+    asdf_php_log "  dep ${dep_full} (${dep_tag})"
+    asdf_php_ghcr_fetch_blob "$dep_repo" "$dep_digest" "$dep_file"
+  done <<< "$deps_lines"
+
+  # Extract everything into Cellar/.
+  local tarball
+  for tarball in "$tmp"/*.tar.gz; do
+    tar xzf "$tarball" -C "$prefix/Cellar/"
+  done
+
+  # Wire new opt/ symlinks for the deps + the ext itself.
+  local formula_dir version_dir formula version
+  for formula_dir in "$prefix/Cellar/"*; do
+    [[ -d "$formula_dir" ]] || continue
+    formula="${formula_dir##*/}"
+    [[ -L "$prefix/opt/${formula}" ]] && continue
+    for version_dir in "$formula_dir"/*; do
+      [[ -d "$version_dir" ]] || continue
+      version="${version_dir##*/}"
+      ln -snf "../Cellar/${formula}/${version}" "$prefix/opt/${formula}"
+      break
+    done
+  done
+
+  # Relocate placeholders on all newly-staged Mach-O files. Safe to
+  # rerun over already-relocated files (no-op if no @@HOMEBREW).
+  asdf_php_log "relocating Mach-O placeholders in new deps..."
+  asdf_php_relocate_all "$prefix"
+
+  # Stage every ext-tap dep's .so into ext_dir + enable it. Extensions
+  # like phpredis fail to load if their sibling ext deps (igbinary,
+  # msgpack) aren't themselves loaded via ini — downloading their
+  # bottle isn't enough. Load order is handled by PHP scanning conf.d
+  # alphanumerically; the 50-* prefix keeps everything after 10-* base
+  # extensions, and 50-<dep> before 50-<name> only matters if names
+  # collide alphabetically (rare in practice).
+  #
+  # For homebrew-core deps that are already staged into Cellar/ by the
+  # base install (openssl, gettext, etc.), the dep walker skipped them
+  # via skip_set and there's nothing extra to enable — they're just
+  # dylibs, not PHP extensions.
+  local ext_so_src stage_name
+  _stage_ext_so() {
+    local formula_name="$1" load_name="$2"
+    local so
+    so="$(find "$prefix/Cellar/${formula_name}" -type f -name "${load_name}.so" 2>/dev/null | head -1)"
+    [[ -z "$so" ]] && {
+      echo "asdf-php-ext: no ${load_name}.so under Cellar/${formula_name}" >&2
+      return 1
+    }
+    cp "$so" "$ext_dir/${load_name}.so"
+    cmd_enable "$load_name"
+  }
+
+  # 1. sibling ext-tap deps first (so they load before the primary
+  # extension, since dependents may check `extension_loaded` at init).
+  local dep_line dep_ident dep_load
+  while IFS=' ' read -r dep_ident _ _ _; do
+    [[ "$dep_ident" == shivammathur/extensions/* ]] || continue
+    # dep_ident is `shivammathur/extensions/<formula>@<majmin>`;
+    # formula = `<load-name>@<majmin>` where load-name may be prefixed
+    # with `php` (phpredis) — but for the deps we've seen so far
+    # (igbinary, msgpack), load-name matches the formula base.
+    dep_load="${dep_ident#shivammathur/extensions/}"
+    dep_load="${dep_load%@*}"
+    # phpredis → redis case is only for the top-level, not the deps;
+    # both igbinary and msgpack keep their name in the tap and as .so.
+    _stage_ext_so "${dep_ident#shivammathur/extensions/}" "$dep_load"
+  done <<< "$deps_lines"
+
+  # 2. primary requested extension. `name` may be `redis` but the
+  # formula was `phpredis@8.1`; the .so is always `<name>.so`.
+  _stage_ext_so "$ext_formula_name" "$name"
+
+  # Verify: php -m should list it.
+  if ! "$prefix/bin/php" -m 2>/dev/null | grep -qiE "^${name}$"; then
+    echo "asdf-php-ext: installed and enabled but php -m doesn't list ${name}" >&2
+    echo "asdf-php-ext: check php -m and check for missing dylib deps via otool -L $ext_dir/${name}.so" >&2
+    exit 1
+  fi
+
+  echo "installed ${name} @ $(basename "$ext_so_src")"
+}
+
 case "${1:-list}" in
   list)    cmd_list ;;
   enable)  shift; cmd_enable "$@" ;;
   disable) shift; cmd_disable "$@" ;;
+  install) shift; cmd_install "$@" ;;
   -h|--help|help)
     cat <<USAGE
 usage: asdf-php-ext <command> [args]
 
 commands:
   list                     list all .so files with enabled/disabled status
-  enable <name>            create <conf.d>/50-<name>.ini
+  enable <name>            create <conf.d>/50-<name>.ini (extension already on disk)
   disable <name>           remove the ini file that registers <name>
+  install <name>           pull the prebuilt bottle from
+                           shivammathur/homebrew-extensions, drop
+                           <name>.so + deps, and enable it
 
 files:
   <prefix>/opt/php@${majmin}/lib/php/${api_ver}/*.so       — .so files
