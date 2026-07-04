@@ -1,0 +1,71 @@
+name: test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    name: unit + regression
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache node_modules (bats)
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bats-${{ hashFiles('package.json') }}
+
+      - name: Install bats
+        run: npm install --no-save bats@1.11.0
+
+      # Unit tests are offline, no install required.
+      - name: Unit tests
+        run: ./node_modules/.bin/bats test/unit
+
+  integration:
+    name: integration (macos-${{ matrix.macos }})
+    strategy:
+      fail-fast: false
+      matrix:
+        macos: ["14", "15"]
+    runs-on: macos-${{ matrix.macos }}
+    env:
+      # gh CLI needs a token for historical installs' commits?until= lookup.
+      # The default GITHUB_TOKEN has read access to public repos, which is
+      # all we need.
+      GH_TOKEN: ${{ github.token }}
+      ASDF_PHP_RUN_INTEGRATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mise
+        run: |
+          curl https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+
+      - name: Link this checkout as the php plugin
+        run: |
+          mise plugin uninstall php || true
+          mise plugin link php "$PWD"
+
+      - name: Install bats
+        run: npm install --no-save bats@1.11.0
+
+      # install-current stands up php@8.1.<current-tap-patch> from
+      # scratch. install-historical does 8.1.27 via git-history +
+      # contemporary-core-ref path. ext-pecl-flow compiles redis via
+      # pecl and enables it. ext-tap-install pulls xdebug from
+      # shivammathur/homebrew-extensions.
+      - name: Integration tests
+        run: ./node_modules/.bin/bats test/integration
+        timeout-minutes: 20
+
+      # Regression suite runs against whatever install-current left behind.
+      - name: Regression tests
+        run: ./node_modules/.bin/bats test/regression
+        if: always()
