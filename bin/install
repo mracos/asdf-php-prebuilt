@@ -41,6 +41,9 @@ asdf_php_install_link_opts "$ASDF_INSTALL_PATH"
 asdf_php_log "relocating Mach-O placeholders..."
 asdf_php_relocate_all "$ASDF_INSTALL_PATH"
 
+asdf_php_log "relocating text-script placeholders..."
+asdf_php_relocate_text_scripts "$ASDF_INSTALL_PATH"
+
 asdf_php_log "wiring bin/ entry points..."
 asdf_php_install_link_bins "$ASDF_INSTALL_PATH" "$majmin"
 

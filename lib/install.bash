@@ -79,10 +79,17 @@ asdf_php_install_link_bins() {
 # brew bottle baked into the binary at build time). Otherwise PHP picks
 # up the host's brew conf.d on machines that have brew installed, which
 # brings stale extension_dir references with it.
+#
+# We use PHPRC + PHP_INI_SCAN_DIR env vars rather than passing -c to the
+# binary, because non-php scripts (pecl, pear, phpize) also live under
+# bin/ and forward args to peclcmd.php etc. — those interpret -c as
+# PEAR's config-file path and blow up ("<dir> is not a valid config file").
+# Env vars are only read by the php binary itself; wrapping stays uniform.
 script_dir="\$(cd -- "\$(dirname -- "\${BASH_SOURCE[0]}")" && pwd)"
 prefix="\$(dirname "\$script_dir")"
+export PHPRC="\${PHPRC:-\$prefix/etc/php/${majmin}/php.ini}"
 export PHP_INI_SCAN_DIR="\${PHP_INI_SCAN_DIR:-\$prefix/etc/php/${majmin}/conf.d}"
-exec "\$prefix/opt/php@${majmin}/bin/${name}" -c "\$prefix/etc/php/${majmin}" "\$@"
+exec "\$prefix/opt/php@${majmin}/bin/${name}" "\$@"
 WRAPPER
     chmod +x "$install_path/bin/$name"
   done

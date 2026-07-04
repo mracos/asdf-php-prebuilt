@@ -118,3 +118,36 @@ asdf_php_relocate_all() {
     -o -path '*/libexec/*' -o -path '*/ext/*' \) 2>/dev/null)
   asdf_php_log "relocated $count Mach-O files"
 }
+
+# Text-file placeholder rewrite. Bottles ship shell/PHP scripts like
+# `pecl`, `pear`, `phpize`, `php-config`, `phar.phar` with
+# `@@HOMEBREW_CELLAR@@/...` paths hardcoded in their shebangs / exec
+# lines. Not Mach-O, so our LC_LOAD_DYLIB relocator skips them, and
+# bash treats the unresolved `@@` prefix as a relative path (yielding
+# nonsense like `<cwd>/@@HOMEBREW_CELLAR@@/php@8.1/.../bin/php: No such
+# file or directory`). Sed-rewrite these in place.
+# Args: <install_path>
+asdf_php_relocate_text_scripts() {
+  local install_path="$1"
+  local count=0 f
+
+  # Only look in Cellar/*/bin, Cellar/*/sbin, Cellar/*/libexec — that's
+  # where the entry-point scripts live. include/share/lib have build
+  # artifacts that carry the same placeholders but PHP doesn't consult
+  # them at runtime.
+  while IFS= read -r f; do
+    asdf_php_is_macho "$f" && continue
+    # Skip .phar archives — they carry a manifest with byte offsets that
+    # sed'd shift, corrupting the archive.
+    [[ "$f" == *.phar ]] && continue
+    grep -qF '@@HOMEBREW_' "$f" 2>/dev/null || continue
+    # LC_ALL=C so BSD sed treats bytes as bytes (some scripts contain
+    # non-UTF-8 payloads and locale-aware sed rejects them).
+    LC_ALL=C sed -i '' \
+      -e "s|@@HOMEBREW_CELLAR@@|${install_path}/Cellar|g" \
+      -e "s|@@HOMEBREW_PREFIX@@|${install_path}|g" "$f"
+    count=$((count + 1))
+  done < <(find "$install_path/Cellar" -type f \
+    \( -path '*/bin/*' -o -path '*/sbin/*' -o -path '*/libexec/*' \) 2>/dev/null)
+  asdf_php_log "relocated $count text scripts"
+}
