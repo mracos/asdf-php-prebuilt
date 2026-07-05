@@ -79,11 +79,31 @@ setup_file() {
     || { echo "extensions missing: $output"; false; }
 }
 
-@test "composer --version runs against our php" {
-  run "$INSTALL/bin/composer" --version
+@test "composer is bundled as a raw phar (chmod +x, env-php shebang)" {
+  # No wrapper: composer follows the mise shim like every other tool.
+  # Users invoke via `mise exec php -- composer ...` for the normal
+  # flow. Direct `<install>/bin/composer` also works from a dir that
+  # pins this PHP version.
+  local composer="$INSTALL/bin/composer"
+  [ -x "$composer" ]
+
+  # composer.phar is well over 1MB; if a wrapper snuck in it would be
+  # a few hundred bytes.
+  local size
+  size="$(stat -f %z "$composer" 2>/dev/null || stat -c %s "$composer")"
+  [ "$size" -gt 1000000 ] \
+    || { echo "composer is $size bytes, expected >1MB (phar)"; false; }
+
+  # First line should be composer's env-php shebang.
+  run head -1 "$composer"
+  [[ "$output" == '#!/usr/bin/env php' ]] \
+    || { echo "unexpected composer shebang: $output"; false; }
+}
+
+@test "composer --version runs via mise exec against our php" {
+  run mise exec "php@$CURRENT_PATCH" -- "$INSTALL/bin/composer" --version
   [ "$status" -eq 0 ]
   [[ "$output" == *"Composer version"* ]]
-  # Composer prints "PHP version X.Y.Z (/path/to/php)" too.
   [[ "$output" == *"$CURRENT_PATCH"* ]] \
     || { echo "composer's PHP version doesn't match: $output"; false; }
 }
