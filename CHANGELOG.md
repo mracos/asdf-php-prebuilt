@@ -6,7 +6,61 @@ Notable changes grouped by release. Not yet cut a first release
 
 ## [Unreleased]
 
-### Added
+### Added (since last CHANGELOG entry)
+
+- `share/asdf-php-ext` `install <name>` subcommand: pulls the
+  prebuilt extension bottle from `shivammathur/homebrew-extensions`,
+  walks tap-sibling deps plus one hop of homebrew-core deps, stages
+  and relocates the `.so` into the unified ext dir, writes
+  `50-<name>.ini`, and verifies with `php -m`. Rolls back staged
+  files if verification fails (documented in troubleshooting).
+- `.github/workflows/test.yml`: matrix over `macos-14` / `macos-15`
+  running unit + integration + regression suites on every push and
+  PR. gh CLI auth uses the workflow-provided `GITHUB_TOKEN`.
+- `test/integration/`: 4 files behind `ASDF_PHP_RUN_INTEGRATION=1`.
+  - `install-current.bats`: full install of the latest 8.1.x from
+    the tap (8 assertions).
+  - `install-latest.bats`: full install of the highest X.Y.Z the tap
+    ships (6 assertions). Catches formula-format drift on newer
+    bottles before it breaks the fast path.
+  - `install-historical.bats`: `mise install php@8.1.27` via the
+    git-history + contemporary-core-ref path (5 assertions).
+  - `ext-pecl-flow.bats`: pecl compile + `asdf-php-ext enable`
+    end to end (3 assertions).
+  - `ext-tap-install.bats`: `asdf-php-ext install xdebug` end to end
+    (4 assertions).
+- `test/helpers.bash` `any_php_81_install`: picks whichever real
+  8.1.x is currently installed, skipping mise's convenience symlinks
+  (`8`, `8.1`, `latest`). Regression tests use it so they don't
+  break when the installed patch changes.
+
+### Changed (since last CHANGELOG entry)
+
+- Composer bundling reverted from wrapper to raw phar. Semantics
+  now match every other mise-managed tool: composer follows the
+  cwd's PHP version pin through mise's shim. Direct
+  `<install>/bin/composer` works from a pinned dir; `mise exec php
+  -- composer <cmd>` works from anywhere. Wrapper approach hardcoded
+  THIS install's php via absolute paths, which caused surprising
+  version-pin behavior for users with multiple PHPs installed.
+- `asdf-php-ext install` now supports both `<name>@<majmin>` and
+  `php<name>@<majmin>` formula naming (e.g., `redis` finds
+  `phpredis@8.1`).
+- README section on extensions promotes `asdf-php-ext install` as
+  the primary path; pecl compile stays documented as the fallback.
+
+### Fixed (since last CHANGELOG entry)
+
+- Backtick in the wrapper heredoc executed `pecl install X` at
+  install time, generating a broken `bin/php` with `line 21:
+  invalid: command not found`. Reworded the comment.
+- Integration test caught composer runtime failure ("Tool not
+  installed for shim") from a mise-shims host with a wrong-pinned
+  cwd. Fix + revert are covered above.
+- Regression test suite is now version-agnostic (`any_php_81_install`
+  instead of hardcoded `8.1.27`).
+
+### Added (initial run)
 
 - Plugin scaffold with asdf-style `bin/list-all`, `bin/download`,
   `bin/install`, `bin/help.overview` (ADR 0001).

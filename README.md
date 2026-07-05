@@ -40,11 +40,18 @@ mise install php@8.1.27   # any patch that's ever been in the tap
 ```
 
 Every install also bundles the latest stable [Composer](https://getcomposer.org)
-at `<install>/bin/composer`. Nothing extra to do:
+as a raw phar at `<install>/bin/composer`. Its `#!/usr/bin/env php`
+shebang resolves through mise's shim, so composer follows whichever
+PHP the cwd pins (same semantics as every other mise-managed tool).
 
 ```sh
 mise exec php -- composer --version
 ```
+
+Direct `<install>/bin/composer` also works from a directory pinning a
+matching PHP version. From an unpinned or wrong-pinned cwd you'll hit
+mise's usual "Tool not installed for shim: php" — invoke through
+`mise exec` when in doubt.
 
 To skip the composer bundle: `ASDF_PHP_BUNDLE_COMPOSER=0 mise install php@...`.
 

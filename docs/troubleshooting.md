@@ -108,11 +108,11 @@ probably renamed or moved; check
 ## Stale ini scan directory
 
 PHP's binary has `/opt/homebrew/etc/php/<MAJMIN>/conf.d` baked in.
-Our `bin/<exe>` wrappers override that with `PHP_INI_SCAN_DIR` and
-`-c`. If you bypass the wrapper (e.g. by running
-`Cellar/php@8.1/8.1.34_1/bin/php` directly), PHP picks up the host's
-brew conf.d instead. Always go through `<install>/bin/php` or `mise
-exec php@<version>`.
+Our `bin/<exe>` wrappers override that by exporting `PHPRC`,
+`PHP_INI_SCAN_DIR`, and `PHP_PEAR_SYSCONF_DIR`. If you bypass the
+wrapper (e.g. by running `Cellar/php@8.1/8.1.34_1/bin/php` directly),
+PHP picks up the host's brew conf.d instead. Always go through
+`<install>/bin/php` or `mise exec php@<version>`.
 
 ## Bottle download fails with HTTP 429
 
@@ -122,16 +122,23 @@ bottle pulls (only for `gh api` during historical resolution).
 
 ## Wrapper scripts override too much
 
-The auto-generated `<install>/bin/php` wrapper passes `-c
-<install>/etc/php/<MAJMIN>` and exports `PHP_INI_SCAN_DIR`. To
-override either for a single run:
+The auto-generated `<install>/bin/<exe>` wrappers export three env
+vars pointing at our install's `etc/`:
+
+- `PHPRC` (where PHP looks for php.ini)
+- `PHP_INI_SCAN_DIR` (extra conf.d files)
+- `PHP_PEAR_SYSCONF_DIR` (PEAR / pecl's pear.conf location)
+
+Each is set with the `${VAR:-default}` idiom, so exporting your own
+value before invoking the wrapper wins:
 
 ```sh
 PHP_INI_SCAN_DIR=/path/to/your/conf.d <install>/bin/php script.php
 ```
 
-`PHP_INI_SCAN_DIR` is honored if set; the wrapper only assigns a
-default.
+Or bypass the wrapper entirely and call the raw binary at
+`<install>/opt/php@<MAJMIN>/bin/php`. That's the escape hatch if
+your workflow needs the compile-time defaults.
 
 ## `pecl install X` succeeds but `asdf-php-ext enable X` says "no .so at ..."
 

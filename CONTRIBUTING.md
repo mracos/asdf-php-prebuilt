@@ -76,9 +76,23 @@ self-built static binaries are in
 
 ## Tests
 
-There aren't any yet. Verification is manual: end-to-end via the
-recipe above, plus checking `php -m` for the expected extensions.
-A bats suite is on the [TODO](TODO.md).
+Bats-based, split into three tiers under `test/`:
+
+- `test/unit/` (15 assertions, ~1s, offline). Feed real formula
+  fixtures through the parsers. `npm test` runs these by default.
+- `test/regression/` (~31 assertions, seconds). Assumes a real 8.1.x
+  install exists locally (auto-detected). Guards against the
+  specific bugs we've already fixed. `npm run test:regression`.
+- `test/integration/` (~27 assertions, minutes each). Full end-to-end
+  installs against the real GHCR + tap. Skipped by default; run with
+  `ASDF_PHP_RUN_INTEGRATION=1 npm run test:integration`.
+
+CI runs all three tiers on `macos-14` and `macos-15` via
+`.github/workflows/test.yml` on every push and PR.
+
+Discipline: every fix pairs with a test in the same commit.
+Regression tier if it can be checked cheaply against an existing
+install; integration tier if it needs a fresh `mise install`.
 
 ## Commits
 

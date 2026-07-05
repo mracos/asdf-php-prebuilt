@@ -37,25 +37,6 @@ requires an intentionally-broken .so (fake shared lib with an
 unresolvable LC_LOAD_DYLIB entry) instead of relying on imagick
 specifically since its dep tree changes over time.
 
-## Extension install from the tap (scaffolded, unverified)
-
-`bin/asdf-php-ext install <name>` currently exists in
-`share/asdf-php-ext` but hasn't been exercised end to end against a
-real formula. Wiring: parse `Formula/<name>@<MAJMIN>.rb` from
-`shivammathur/homebrew-extensions`, walk transitive deps
-(tap-scoped and homebrew-core), reuse the plugin's GHCR + relocate
-machinery, drop the `.so` in the unified pecl dir, enable via the
-existing user path.
-
-For extensions with C dependencies not in homebrew-core (imagick →
-imagemagick), the current shape may not resolve everything. Test
-with `xdebug@8.1` (no external C deps), `igbinary@8.1`,
-`msgpack@8.1` first.
-
-Also: `.mise.toml`-driven declarative installs via `ASDF_PHP_EXTS`
-env var, so `mise install php@X` auto-installs the extensions a
-project declares.
-
 ## PEAR registry (.reg) length prefixes
 
 pecl / pear emit
@@ -70,24 +51,41 @@ over `pear.conf`. Extending it to walk
 `Cellar/php@<MAJMIN>/*/share/php@<MAJMIN>/pear/.registry/*.reg` and
 apply the same fix would silence these.
 
-## GH Actions CI
+## `.mise.toml` `ASDF_PHP_EXTS` for declarative extensions
 
-Matrix on `macos-14` / `macos-15` (and `macos-26` once GitHub
-provides it) running `bin/install` for a curated version set,
-asserting `php --version` matches and that a fixed list of
-extensions load. Catches regressions when the tap or homebrew-core
-changes their formula format.
+`bin/install` reads `ASDF_PHP_EXTS` (comma-separated list) at the
+end of its run and calls `asdf-php-ext install <name>` for each.
+Then a repo can declare:
 
-Bats test suite would slot in here too — see Tests.
+```toml
+[tools]
+php = "8.1.34"
+[env]
+ASDF_PHP_EXTS = "redis,igbinary,msgpack"
+```
 
-## Tests (bats)
+and a teammate's `git clone && mise install` lands a fully-
+configured PHP + extension surface. Same wiring shape as
+`ASDF_PHP_BUNDLE_COMPOSER=0` uses today, extended to a list.
 
-Unit tests for `lib/*` parsers — version parsing, dependency
-extraction (on_macos vs on_linux block handling), bottle digest
-resolution with `cellar: :any` qualifiers. Fixtures from real
-formula files at known refs.
+## Alternative direction: `mracos/asdf-composer` sibling plugin
 
-Integration tests live in CI; bats tests run in isolation.
+We ship composer as a raw phar bundled with php. Semantics: composer
+follows the cwd's PHP pin via mise's shim. The principled alternative
+is publishing a separate `asdf-composer` plugin so composer gets its
+own `.tool-versions` entry with its own pin. Composer 2.x supports
+PHP 7.2 through 8.4, so it truly is orthogonal.
+
+Blocker: we did try `ubi:composer/composer@latest` and it fails
+because composer publishes a PHAR, not a native binary. A dedicated
+plugin (`list-all` from https://getcomposer.org/versions, `install`
+downloads the versioned phar) is ~30 lines but a separate repo.
+
+## `bin/latest-stable` asdf hook
+
+Adds `mise install php@latest` (and asdf equivalent). Small script
+that returns the highest stable X.Y.Z from the tap, similar to
+`bin/list-all` but filtered to one line. Optional in the asdf API.
 
 ## Linux support
 
