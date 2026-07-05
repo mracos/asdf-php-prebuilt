@@ -1,0 +1,39 @@
+#compdef asdf-php-ini
+# zsh completion for asdf-php-ini.
+#
+# Install: drop this file in any directory on your $fpath, then
+# `autoload -Uz compinit && compinit`. Or symlink from
+# ~/.local/share/mise/installs/php/<ver>/share/completions/_asdf-php-ini
+# into your fpath dir.
+
+_asdf-php-ini() {
+  local -a subs
+  subs=(
+    'list:print user settings, or --all for every directive'
+    'get:print the effective value of a key'
+    'set:write or update <key>=<value>'
+    'unset:remove <key> from user settings'
+    'keys:print every ini directive name (for scripting)'
+    'help:print usage'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe -t commands 'asdf-php-ini command' subs
+    return
+  fi
+
+  case ${words[2]} in
+    get|set|unset)
+      # Second positional: an ini key. Discovered from the tool itself
+      # so completion matches THIS install's PHP.
+      local -a keys
+      keys=("${(@f)$(asdf-php-ini keys 2>/dev/null)}")
+      _describe -t keys 'ini key' keys
+      ;;
+    list)
+      _values 'flag' '--all[dump every ini directive]'
+      ;;
+  esac
+}
+
+compdef _asdf-php-ini asdf-php-ini

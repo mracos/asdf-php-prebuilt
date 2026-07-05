@@ -44,11 +44,43 @@ _key_regex() {
 }
 
 cmd_list() {
+  # `list` with no args: user overrides only (what we've written).
+  # `list --all`: every ini directive PHP knows about, with its
+  # effective value (post conf.d merge). Slower, hundreds of lines,
+  # but this is how you discover what you can `set`.
+  if [[ "${1:-}" == "--all" ]]; then
+    "$prefix/bin/php" -r '
+      // Second arg false: flat map (key => effective value string).
+      // A handful of directives are internally arrays and cast to
+      // "Array"; represent those as their JSON form for readability.
+      $all = ini_get_all(null, false);
+      ksort($all);
+      $w = 0;
+      foreach (array_keys($all) as $k) $w = max($w, strlen($k));
+      foreach ($all as $k => $v) {
+        if (is_array($v)) $v = json_encode($v);
+        if ($v === "" || $v === null) $v = "(empty)";
+        printf("%-${w}s  %s\n", $k, $v);
+      }
+    '
+    return 0
+  fi
+
   if [[ ! -s "$user_ini" ]]; then
     echo "(no user settings)"
     return 0
   fi
   cat "$user_ini"
+}
+
+cmd_keys() {
+  # One directive name per line, for shell-completion consumption.
+  # Kept as its own subcommand (not part of `list`) so completion
+  # scripts can invoke it without parsing formatted output.
+  "$prefix/bin/php" -r '
+    $all = ini_get_all(null, false);
+    foreach (array_keys($all) as $k) echo $k, "\n";
+  '
 }
 
 cmd_get() {
@@ -109,7 +141,8 @@ cmd_unset() {
 }
 
 case "${1:-list}" in
-  list)   cmd_list ;;
+  list)   shift; cmd_list "$@" ;;
+  keys)   cmd_keys ;;
   get)    shift; cmd_get "$@" ;;
   set)    shift; cmd_set "$@" ;;
   unset)  shift; cmd_unset "$@" ;;
@@ -119,6 +152,8 @@ usage: asdf-php-ini <command> [args]
 
 commands:
   list                  print keys currently set in 99-asdf-php-user.ini
+  list --all            print every ini directive with its effective value
+  keys                  print every ini directive name (one per line, for completion)
   get <key>             print the effective ini value (via php ini_get)
   set <key> <value>     write or update <key>=<value>
   unset <key>           remove <key>
@@ -126,7 +161,7 @@ commands:
 files:
   <prefix>/etc/php/${majmin}/conf.d/99-asdf-php-user.ini    (user overrides)
 
-Precedence (low → high in the conf.d scan order):
+Precedence (low to high in the conf.d scan order):
   00-asdf-php.ini      extension_dir bootstrap
   10-<name>.ini        bundled shared extensions
   50-<name>.ini        extensions enabled by asdf-php-ext

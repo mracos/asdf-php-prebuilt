@@ -103,6 +103,52 @@ teardown() {
   [[ "$output" == *"not set"* ]]
 }
 
+@test "keys prints every ini directive name, one per line" {
+  run "$INSTALL/bin/asdf-php-ini" keys
+  [ "$status" -eq 0 ]
+  # Should include a handful of well-known directives; count should
+  # be well over 100 (PHP core alone declares ~200).
+  local n
+  n="$(printf '%s\n' "$output" | wc -l | tr -d ' ')"
+  [ "$n" -gt 100 ] \
+    || { echo "keys count $n suspiciously low"; false; }
+  [[ "$output" == *"memory_limit"* ]]
+  [[ "$output" == *"date.timezone"* ]]
+  [[ "$output" == *"error_reporting"* ]]
+}
+
+@test "list --all dumps every directive with its effective value" {
+  run "$INSTALL/bin/asdf-php-ini" list --all
+  [ "$status" -eq 0 ]
+  # No PHP notices/warnings in the output.
+  [[ ! "$output" =~ "Array to string" ]] \
+    || { echo "list --all leaked array-cast warnings"; false; }
+  [[ ! "$output" =~ "PHP Warning" ]]
+  [[ ! "$output" =~ "PHP Notice" ]]
+  # Contains well-known directives with their values.
+  [[ "$output" == *"memory_limit"* ]]
+  [[ "$output" == *"date.timezone"* ]]
+}
+
+@test "list --all reflects user overrides" {
+  "$INSTALL/bin/asdf-php-ini" set memory_limit 777M
+  run "$INSTALL/bin/asdf-php-ini" list --all
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ memory_limit[[:space:]]+777M ]] \
+    || { echo "list --all missing user override"; false; }
+}
+
+@test "completions ship at share/completions/ (zsh + bash)" {
+  # These are dropped in place by asdf_php_install_link_bins so users
+  # can point their fpath at share/completions/. If either goes
+  # missing, users get no autocomplete after a reinstall.
+  [ -f "$INSTALL/share/completions/_asdf-php-ini" ]
+  [ -f "$INSTALL/share/completions/asdf-php-ini.bash" ]
+  # Zsh completion has the compdef line.
+  run grep -q '^#compdef asdf-php-ini' "$INSTALL/share/completions/_asdf-php-ini"
+  [ "$status" -eq 0 ]
+}
+
 @test "keys with dots are treated as single keys (not regex-glob)" {
   # opcache.enable and opcache.enabled should be independent lines.
   "$INSTALL/bin/asdf-php-ini" set opcache.enable 1

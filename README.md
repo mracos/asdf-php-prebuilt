@@ -117,12 +117,29 @@ prefix loads last in the conf.d scan order, so user settings win
 over `10-*` (bundled) and `50-*` (enabled) entries.
 
 ```sh
-mise exec php -- asdf-php-ini list                        # show all user settings
+mise exec php -- asdf-php-ini list                        # user settings only
+mise exec php -- asdf-php-ini list --all                  # every directive with effective value
+mise exec php -- asdf-php-ini keys                        # every directive name (one per line)
 mise exec php -- asdf-php-ini set memory_limit 512M       # set / update
 mise exec php -- asdf-php-ini set date.timezone UTC
 mise exec php -- asdf-php-ini get memory_limit            # effective value via php ini_get
 mise exec php -- asdf-php-ini unset memory_limit
 ```
+
+Shell completions ship at `<install>/share/completions/`:
+
+```sh
+# zsh: add the completions dir to your fpath before compinit
+fpath=(~/.local/share/mise/installs/php/*/share/completions $fpath)
+autoload -Uz compinit && compinit
+
+# bash
+source ~/.local/share/mise/installs/php/*/share/completions/asdf-php-ini.bash
+```
+
+Tab-completes subcommands (`list`, `get`, `set`, `unset`, `keys`) and
+the second positional for `get` / `set` / `unset` against `asdf-php-ini
+keys` output (all 280+ directives PHP knows about).
 
 Values containing whitespace, `;`, `#`, or `"` get double-quoted
 automatically. `set` is idempotent: setting the same key twice

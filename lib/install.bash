@@ -131,6 +131,16 @@ WRAPPER
     cp "$plugin_dir/share/asdf-php-ini" "$install_path/bin/asdf-php-ini"
     chmod +x "$install_path/bin/asdf-php-ini"
   fi
+
+  # Shell completions for the asdf-php-* helpers. Ship into
+  # <install>/share/completions/ so users can point their zsh $fpath
+  # (or bash-completion.d) at that dir. Bundled per install rather
+  # than installed globally to avoid polluting the user's shell config
+  # from a plugin script.
+  if [[ -d "$plugin_dir/share/completions" ]]; then
+    mkdir -p "$install_path/share/completions"
+    cp -R "$plugin_dir/share/completions/." "$install_path/share/completions/"
+  fi
 }
 
 # Copy default php.ini / php-fpm.conf etc. from the bottle's `.bottle/etc/`,
