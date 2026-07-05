@@ -67,11 +67,21 @@ because composer publishes a PHAR, not a native binary. A dedicated
 plugin (`list-all` from https://getcomposer.org/versions, `install`
 downloads the versioned phar) is ~30 lines but a separate repo.
 
-## `bin/latest-stable` asdf hook
+## `bin/latest-stable` asdf hook (only needed for upstream asdf)
 
-Adds `mise install php@latest` (and asdf equivalent). Small script
-that returns the highest stable X.Y.Z from the tap, similar to
-`bin/list-all` but filtered to one line. Optional in the asdf API.
+Adds a proper hook for `asdf install php latest`. Mise already
+resolves `@latest` to the last line of `bin/list-all` output (which
+is our highest stable X.Y.Z), so `mise install php@latest` works
+today without the hook. Upstream asdf (Ruby) requires the file
+explicitly. Two lines:
+
+```sh
+#!/usr/bin/env bash
+"$(dirname "$0")/list-all" | sort -V | tail -1
+```
+
+Nice-to-have if we ever care about asdf-native compatibility;
+skipped for now since mise is the primary target.
 
 ## Linux support
 
