@@ -227,6 +227,10 @@ Tests are documented in [CONTRIBUTING](CONTRIBUTING.md).
 - [ADR 0001](docs/adrs/0001-php-homebrew-bottles.md) explains why
   bottles, how the historical-resolution path works, and the
   migration plan to self-built static binaries.
+- [ADR 0002](docs/adrs/0002-extension-management.md) covers the
+  extension subsystem: unified `extension_dir`, conf.d 00/10/50
+  convention, `asdf-php-ext` CLI, pecl vs tap-bottle install paths,
+  rollback on verify failure.
 - [CHANGELOG](CHANGELOG.md) tracks releases.
 - [TODO](TODO.md) explicitly deferred work.
 - [Troubleshooting](docs/troubleshooting.md) common install failures
