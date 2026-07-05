@@ -123,6 +123,14 @@ WRAPPER
       "$plugin_dir/share/asdf-php-ext" > "$install_path/bin/asdf-php-ext"
     chmod +x "$install_path/bin/asdf-php-ext"
   fi
+
+  # ini setting helper: user-writable settings land in
+  # conf.d/99-asdf-php-user.ini (loads last, wins). Fully self-contained,
+  # no plugin lib dependency.
+  if [[ -f "$plugin_dir/share/asdf-php-ini" ]]; then
+    cp "$plugin_dir/share/asdf-php-ini" "$install_path/bin/asdf-php-ini"
+    chmod +x "$install_path/bin/asdf-php-ini"
+  fi
 }
 
 # Copy default php.ini / php-fpm.conf etc. from the bottle's `.bottle/etc/`,

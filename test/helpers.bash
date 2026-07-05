@@ -22,21 +22,28 @@ require_install() {
   [[ -x "$path/bin/php" ]] || skip "no install at $path (run `mise install php@<version>`)"
 }
 
-# Resolve INSTALL to whatever real 8.1.x is currently installed under
+# Resolve INSTALL to the highest-versioned real 8.1.x install under
 # mise. Tests set INSTALL="$(any_php_81_install)" then require_install.
 #
-# mise creates symlinks like `<installs>/php/8.1 → 8.1.34` alongside
-# the real dirs; the glob catches both, so skip symlinks explicitly
-# to land on the real versioned install.
+# Notes:
+#   - mise creates convenience symlinks (8, 8.1, latest) alongside
+#     the real versioned dirs; skip those.
+#   - Old-patch installs sometimes stick around after `mise uninstall`
+#     if the dir was corrupted mid-install; prefer the newer patch so
+#     tests exercise the freshest state.
 any_php_81_install() {
-  local d
-  for d in "$HOME/.local/share/mise/installs/php/8.1"*; do
-    [[ -L "$d" ]] && continue          # skip mise's convenience symlinks
+  local d picked=""
+  # `sort -V | tail -1` gives us the highest 8.1.x by version.
+  while IFS= read -r d; do
+    [[ -L "$d" ]] && continue
     [[ -x "$d/bin/php" ]] || continue
-    echo "$d"
-    return 0
-  done
-  echo "$HOME/.local/share/mise/installs/php/8.1.NONE"
+    picked="$d"
+  done < <(ls -d "$HOME/.local/share/mise/installs/php/8.1"* 2>/dev/null | sort -V)
+  if [[ -n "$picked" ]]; then
+    echo "$picked"
+  else
+    echo "$HOME/.local/share/mise/installs/php/8.1.NONE"
+  fi
 }
 
 # Skip if we don't have network access — some tests hit the tap or GHCR.

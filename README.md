@@ -109,6 +109,27 @@ The conf.d layout is:
 
 `disable` refuses to remove `00-*.ini`.
 
+## PHP ini settings
+
+`asdf-php-ini` manages user ini overrides in
+`<install>/etc/php/<MAJMIN>/conf.d/99-asdf-php-user.ini`. The `99-`
+prefix loads last in the conf.d scan order, so user settings win
+over `10-*` (bundled) and `50-*` (enabled) entries.
+
+```sh
+mise exec php -- asdf-php-ini list                        # show all user settings
+mise exec php -- asdf-php-ini set memory_limit 512M       # set / update
+mise exec php -- asdf-php-ini set date.timezone UTC
+mise exec php -- asdf-php-ini get memory_limit            # effective value via php ini_get
+mise exec php -- asdf-php-ini unset memory_limit
+```
+
+Values containing whitespace, `;`, `#`, or `"` get double-quoted
+automatically. `set` is idempotent: setting the same key twice
+replaces, doesn't append. `get` returns the effective value via
+`php -r 'echo ini_get(...)'`, so it reflects the full conf.d merge,
+not just what asdf-php-ini has written.
+
 ## What `mise install` does under the hood
 
 1. Read `Formula/php@<MAJMIN>.rb` from the tap. If the requested patch

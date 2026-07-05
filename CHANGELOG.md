@@ -6,6 +6,21 @@ Notable changes grouped by release. Not yet cut a first release
 
 ## [Unreleased]
 
+### Added
+
+- `share/asdf-php-ini`: user ini-override helper (`list` / `get` /
+  `set` / `unset`). Writes to
+  `<install>/etc/php/<MAJMIN>/conf.d/99-asdf-php-user.ini`. The 99-
+  prefix loads last in conf.d scan order so user settings win over
+  bundled + enabled defaults. `get` returns the effective value via
+  `php -r ini_get` (routed through our wrapper). Values with
+  whitespace / `;` / `#` / `"` auto-quoted. Idempotent set.
+- 10 regression assertions in `test/regression/ini-helper.bats`
+  covering: presence in bin/, empty-file list output, quoted vs
+  unquoted values, idempotent set, effective get, 99- precedence
+  over 50-, unset removal, unset-of-unknown error, dot-in-key
+  handling (opcache.enable vs opcache.enabled independent).
+
 ### Added (since last CHANGELOG entry)
 
 - `share/asdf-php-ext` `install <name>` subcommand: pulls the

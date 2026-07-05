@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# asdf-php-ini: manage user-set PHP ini values in this install prefix.
+#
+# All writes go to <prefix>/etc/php/<MAJMIN>/conf.d/99-asdf-php-user.ini.
+# The 99- prefix makes that file load LAST in the conf.d scan order, so
+# user settings override the bundled 10-<name>.ini and enable-time
+# 50-<name>.ini entries.
+#
+# Commands:
+#   list                  print keys currently set in 99-asdf-php-user.ini
+#   get <key>             print the effective ini value (via php ini_get)
+#   set <key> <value>     write or update <key>=<value>
+#   unset <key>           remove <key>
+
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+prefix="$(dirname "$script_dir")"
+
+# Auto-detect majmin from <prefix>/opt/php@*.
+majmin=""
+for opt_dir in "$prefix/opt"/php@*; do
+  [[ -d "$opt_dir" ]] || continue
+  majmin="${opt_dir##*@}"
+  break
+done
+if [[ -z "$majmin" ]]; then
+  echo "asdf-php-ini: no php@* under $prefix/opt/" >&2
+  exit 1
+fi
+
+user_ini="$prefix/etc/php/${majmin}/conf.d/99-asdf-php-user.ini"
+
+# Return the sed-safe form of a key. Escapes chars that would be
+# regex-special in a bracket-anchored line match.
+_key_regex() {
+  local key="$1"
+  # Escape . and [ and ] and $ so grep/sed treat them literally.
+  key="${key//./\\.}"
+  key="${key//[/\\[}"
+  key="${key//]/\\]}"
+  key="${key//\$/\\\$}"
+  echo "$key"
+}
+
+cmd_list() {
+  if [[ ! -s "$user_ini" ]]; then
+    echo "(no user settings)"
+    return 0
+  fi
+  cat "$user_ini"
+}
+
+cmd_get() {
+  local key="${1:?usage: asdf-php-ini get <key>}"
+  # Ask PHP directly. This is the EFFECTIVE value (post-conf.d merge)
+  # from the user's perspective, not just what we wrote. Route through
+  # our wrapper so PHPRC + PHP_INI_SCAN_DIR are set.
+  local escaped="${key//\'/\\\'}"
+  "$prefix/bin/php" -r "echo ini_get('$escaped'), PHP_EOL;"
+}
+
+cmd_set() {
+  local key="${1:?usage: asdf-php-ini set <key> <value>}"
+  local value="${2:?usage: asdf-php-ini set <key> <value>}"
+
+  mkdir -p "$(dirname "$user_ini")"
+  touch "$user_ini"
+
+  local key_re
+  key_re="$(_key_regex "$key")"
+
+  # Drop any existing entry for this key, then append the new one.
+  local tmp
+  tmp="$(mktemp)"
+  grep -vE "^[[:space:]]*${key_re}[[:space:]]*=" "$user_ini" > "$tmp" || true
+
+  # Values with whitespace, semicolons, or hashes need quoting.
+  if [[ "$value" =~ [[:space:]\;\#\"] ]]; then
+    printf '%s = "%s"\n' "$key" "$value" >> "$tmp"
+  else
+    printf '%s = %s\n' "$key" "$value" >> "$tmp"
+  fi
+  mv "$tmp" "$user_ini"
+  echo "set $key = $value (in ${user_ini##*/})"
+}
+
+cmd_unset() {
+  local key="${1:?usage: asdf-php-ini unset <key>}"
+
+  if [[ ! -f "$user_ini" ]]; then
+    echo "asdf-php-ini: $key not set (no user ini file)" >&2
+    exit 1
+  fi
+
+  local key_re
+  key_re="$(_key_regex "$key")"
+
+  if ! grep -qE "^[[:space:]]*${key_re}[[:space:]]*=" "$user_ini"; then
+    echo "asdf-php-ini: $key not set" >&2
+    exit 1
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+  grep -vE "^[[:space:]]*${key_re}[[:space:]]*=" "$user_ini" > "$tmp" || true
+  mv "$tmp" "$user_ini"
+  echo "unset $key (from ${user_ini##*/})"
+}
+
+case "${1:-list}" in
+  list)   cmd_list ;;
+  get)    shift; cmd_get "$@" ;;
+  set)    shift; cmd_set "$@" ;;
+  unset)  shift; cmd_unset "$@" ;;
+  -h|--help|help)
+    cat <<USAGE
+usage: asdf-php-ini <command> [args]
+
+commands:
+  list                  print keys currently set in 99-asdf-php-user.ini
+  get <key>             print the effective ini value (via php ini_get)
+  set <key> <value>     write or update <key>=<value>
+  unset <key>           remove <key>
+
+files:
+  <prefix>/etc/php/${majmin}/conf.d/99-asdf-php-user.ini    (user overrides)
+
+Precedence (low → high in the conf.d scan order):
+  00-asdf-php.ini      extension_dir bootstrap
+  10-<name>.ini        bundled shared extensions
+  50-<name>.ini        extensions enabled by asdf-php-ext
+  99-asdf-php-user.ini your settings via this helper
+USAGE
+    ;;
+  *)
+    echo "asdf-php-ini: unknown command: $1" >&2
+    echo "run \`asdf-php-ini --help\` for usage" >&2
+    exit 1
+    ;;
+esac
