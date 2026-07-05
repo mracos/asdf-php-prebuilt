@@ -166,6 +166,50 @@ asdf_php_install_seed_etc() {
         -e "s|@@HOMEBREW_PREFIX@@|${install_path}|g" \
         -e "s|@@HOMEBREW_CELLAR@@|${install_path}/Cellar|g" {}
 
+  # 2a. PEAR .reg files: substitute @@HOMEBREW_CELLAR@@ with our
+  # install's Cellar path AND recompute `s:N:` length prefixes.
+  #
+  # Diagnosis: brew's post_install patches these files by replacing
+  # `@@HOMEBREW_CELLAR@@` (19 chars) with `/opt/homebrew/Cellar`
+  # (20 chars). The `s:N:` prefixes in the shipped bottle are baked
+  # for the resolved brew path (N = placeholder-value-length + 1).
+  # Left untouched, unserialize fails at the first placeholder site
+  # and PEAR / pecl emit noisy Notice: unserialize() errors on every
+  # registry-touching operation.
+  #
+  # Fixing with sed + perl-length-recompute isn't safe: general
+  # serialize values can contain `"`, breaking the naive regex. But
+  # .reg values are paths (no `"`), so a bounded regex works if we
+  # anchor on the `s:N:"..."` shape. We use `preg_replace_callback`
+  # in PHP so length recomputation is done from the actual byte length.
+  local reg_glob="$install_path/Cellar/php@${majmin}"/*/share/php@${majmin}/pear
+  local reg_php='
+    $cellar = $argv[1];
+    foreach ([$argv[2]."/.registry", $argv[2]."/.channels", $argv[2]."/.channels/.alias"] as $dir) {
+      if (!is_dir($dir)) continue;
+      foreach (glob("$dir/*.reg") as $f) {
+        $data = file_get_contents($f);
+        $out = preg_replace_callback(
+          "/s:(\d+):\"([^\"]*?)@@HOMEBREW_CELLAR@@([^\"]*?)\";/",
+          function ($m) use ($cellar) {
+            $v = $m[2] . $cellar . $m[3];
+            return "s:" . strlen($v) . ":\"" . $v . "\";";
+          },
+          $data
+        );
+        if ($out !== $data) file_put_contents($f, $out);
+      }
+    }
+  '
+  # Only run if the pear dir exists (older bottles skipped PEAR).
+  local pear_dir
+  for pear_dir in $reg_glob; do
+    [[ -d "$pear_dir" ]] || continue
+    "$install_path/opt/php@${majmin}/bin/php" -r "$reg_php" -- \
+      "$install_path/Cellar" "$pear_dir"
+    break
+  done
+
   # 2b. pear.conf is PHP-serialized (`a:N:{s:K:"key";s:V:"value";...}`),
   # not a plain text config. Step 2's sed rewrote path values but not
   # the `s:V:` length prefixes, so unserialize() silently fails and PEAR

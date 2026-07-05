@@ -175,19 +175,35 @@ causes:
 
 ## `unserialize(): Error at offset N of M bytes in PEAR/Registry.php`
 
-pecl / pear emits these as `Notice:` during install. Non-fatal. The
-extension still compiles and installs. The `.reg` files under
-`<install>/share/php@<MAJMIN>/pear/.registry/` are PHP-serialized
-and their `s:N:"..."` length prefixes drifted when we sed-rewrote
-their path values. `pear.conf` gets a perl length-fix pass in
-`bin/install`; the `.reg` files don't yet. Track:
-[TODO.md](../TODO.md) "PEAR registry length prefixes".
-
-To silence for a specific pecl run, redirect stderr:
+Fixed. If you see it, your install predates the PEAR-registry length-
+prefix fix. Reinstall (`mise uninstall php@<version> && mise install
+php@<version>`) or apply in place:
 
 ```sh
-mise exec php -- pecl install X 2>&1 | grep -v 'unserialize()'
+inst=~/.local/share/mise/installs/php/<version>
+"$inst/opt/php@8.1/bin/php" -r '
+$cellar = $argv[1];
+foreach ([$argv[2]."/.registry", $argv[2]."/.channels", $argv[2]."/.channels/.alias"] as $dir) {
+  if (!is_dir($dir)) continue;
+  foreach (glob("$dir/*.reg") as $f) {
+    $data = file_get_contents($f);
+    $out = preg_replace_callback(
+      "/s:(\d+):\"([^\"]*?)@@HOMEBREW_CELLAR@@([^\"]*?)\";/",
+      function ($m) use ($cellar) { $v = $m[2] . $cellar . $m[3]; return "s:" . strlen($v) . ":\"" . $v . "\";"; },
+      $data
+    );
+    if ($out !== $data) file_put_contents($f, $out);
+  }
+}' -- "$inst/Cellar" "$inst/Cellar/php@8.1/"*/share/php@8.1/pear
 ```
+
+Root cause was: brew's post_install substitutes
+`@@HOMEBREW_CELLAR@@` (19 chars) with `/opt/homebrew/Cellar` (20
+chars) in every `.reg` value. The `s:N:` length prefixes in the
+shipped bottle were baked for the resolved brew path, so with the
+placeholder intact they were off by 1 per substitution site.
+`unserialize()` failed at the first mismatch and PEAR fell back to
+compiled-in defaults.
 
 ## `asdf-php-ext install imagick` errors with "php -m failed (exit N)"
 

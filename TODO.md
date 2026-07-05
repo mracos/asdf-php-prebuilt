@@ -37,20 +37,6 @@ requires an intentionally-broken .so (fake shared lib with an
 unresolvable LC_LOAD_DYLIB entry) instead of relying on imagick
 specifically since its dep tree changes over time.
 
-## PEAR registry (.reg) length prefixes
-
-pecl / pear emit
-`unserialize(): Error at offset N of M bytes in PEAR/Registry.php`
-notices on operations that touch the registry. The `.reg` files
-under `<install>/share/php@<MAJMIN>/pear/.registry/` are
-PHP-serialized like `pear.conf` and their `s:N:"..."` length
-prefixes drift after our sed rewrite. Non-fatal but noisy.
-
-`bin/install`'s `seed_etc` already runs the perl length-fix pass
-over `pear.conf`. Extending it to walk
-`Cellar/php@<MAJMIN>/*/share/php@<MAJMIN>/pear/.registry/*.reg` and
-apply the same fix would silence these.
-
 ## `.mise.toml` `ASDF_PHP_EXTS` for declarative extensions
 
 `bin/install` reads `ASDF_PHP_EXTS` (comma-separated list) at the

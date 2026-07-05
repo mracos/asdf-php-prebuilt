@@ -8,6 +8,20 @@ Notable changes grouped by release. Not yet cut a first release
 
 ### Added
 
+- PEAR-registry `.reg` file fixer in `asdf_php_install_seed_etc`.
+  Runs a `preg_replace_callback` over
+  `Cellar/php@<X.Y>/*/share/php@<X.Y>/pear/{.registry,.channels,.channels/.alias}/*.reg`,
+  substitutes `@@HOMEBREW_CELLAR@@` with the install's actual Cellar
+  path AND recomputes each `s:N:` length prefix. Silences the
+  `unserialize(): Error at offset N of M bytes in PEAR/Registry.php`
+  notices that used to accompany every pecl / pear invocation.
+- 5 regression assertions in `test/regression/pear-registry.bats`:
+  every .reg unserializes, no placeholder leftovers, pecl
+  config-show + list run clean, pear list enumerates the bundled
+  PEAR packages.
+
+### Added
+
 - `share/asdf-php-ini`: user ini-override helper (`list` / `list
   --all` / `keys` / `get` / `set` / `unset`). Writes to
   `<install>/etc/php/<MAJMIN>/conf.d/99-asdf-php-user.ini`. The 99-
