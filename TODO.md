@@ -131,3 +131,21 @@ When `bin/install` fails partway through relocation, the partial
 install dir is left behind and the next attempt's "remove previous"
 heuristic blows it away with no record. A `<install>/.asdf-php-log`
 that captures the install steps would help post-mortems.
+
+## Seed net-snmp MIB path in the wrapper
+
+The bottled `net-snmp` compiles in `/opt/homebrew/Cellar/net-snmp/<v>/
+share/snmp/mibs` as its default MIB directory. On systems without
+Homebrew (fresh CI runners, non-brew users) `libnetsnmp_init` writes
+`MIB search path: /root/.snmp/mibs:/opt/homebrew/...` to stderr on
+every PHP invocation with the `snmp` extension loaded (which is
+default on 8.6.0, at least). Non-fatal but ugly.
+
+Fix shape: same pattern as the openssl cert.pem seed — point
+`MIBDIRS` at the bundled `<install>/opt/net-snmp/share/snmp/mibs` in
+the wrapper `bin/php` (and friends). Users setting their own MIBDIRS
+already override this.
+
+The install-verify step tolerates this pollution as of `1b441a4`
+(grep for `^PHP ` instead of `head -1`), but the underlying warning
+still leaks into every user-facing php run.
