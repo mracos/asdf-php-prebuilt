@@ -101,7 +101,7 @@ and writes `<install>/etc/php/<MAJMIN>/conf.d/50-<name>.ini`.
 
 The conf.d layout is:
 
-```
+```text
 00-asdf-php.ini      extension_dir bootstrap (do not touch)
 10-<name>.ini        bundled by asdf-php at install time (opcache, intl if shared)
 50-<name>.ini        enabled by asdf-php-ext (enable, install)
@@ -249,16 +249,20 @@ install older bottles via forward compatibility.
   extension doesn't load. Track:
   [TODO.md](TODO.md#full-dep-chain-for-heavy-c-extensions).
 
-## Testing
+## Testing + linting
 
 ```sh
-npm install              # get bats
+npm install              # get bats + shellcheck + markdownlint + prettier
 npm test                 # unit tests (fast, offline, ~1s)
 npm run test:regression  # regression tests (requires an active install)
-npm run test:all         # both
+npm run test:all         # unit + regression
+npm run lint             # shellcheck + markdownlint + prettier
 ```
 
-Tests are documented in [CONTRIBUTING](CONTRIBUTING.md).
+Individual lint targets: `lint:shell`, `lint:md`, `lint:fmt`. CI
+runs `lint` before the test jobs on every push.
+
+Tests + lint policy: [CONTRIBUTING](CONTRIBUTING.md).
 
 ## Documentation
 

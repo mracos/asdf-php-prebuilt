@@ -185,9 +185,11 @@ cmd_install() {
   # Download main ext bottle + all deps into a scratch dir.
   local tmp
   tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064  # expand $tmp now; trap runs later
   trap "rm -rf '$tmp'" EXIT
 
-  local ext_repo="$(asdf_php_ghcr_repo_path "$root_url" "$ext_formula_name")"
+  local ext_repo
+  ext_repo="$(asdf_php_ghcr_repo_path "$root_url" "$ext_formula_name")"
   local ext_file="$tmp/${ext_formula_name//\//_}-${tag}.tar.gz"
   asdf_php_log "downloading ${ext_formula_name} (${tag}) from ${ext_repo}"
   asdf_php_ghcr_fetch_blob "$ext_repo" "$digest" "$ext_file"
@@ -270,7 +272,7 @@ cmd_install() {
 
   # 1. sibling ext-tap deps first (so they load before the primary
   # extension, since dependents may check `extension_loaded` at init).
-  local dep_line dep_ident dep_load
+  local dep_ident dep_load
   while IFS=' ' read -r dep_ident _ _ _; do
     [[ "$dep_ident" == shivammathur/extensions/* ]] || continue
     # dep_ident is `shivammathur/extensions/<formula>@<majmin>`;

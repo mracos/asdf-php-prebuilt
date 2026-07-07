@@ -48,7 +48,7 @@ shows what HEAD has) and you stay on the fast path that doesn't need
 
 `composer` (or any script using PHP's SSL streams) fails with
 
-```
+```text
 Warning: failed loading cafile stream: `<install>/etc/openssl@3/cert.pem'
 Warning: copy(): Failed to enable crypto
 ```
@@ -144,7 +144,7 @@ your workflow needs the compile-time defaults.
 
 Symptom:
 
-```
+```console
 $ mise exec php -- pecl install redis
 install ok: channel://pecl.php.net/redis-6.2.0
 $ mise exec php -- asdf-php-ext enable redis
@@ -209,7 +209,7 @@ compiled-in defaults.
 
 Symptom, after running `asdf-php-ext install imagick`:
 
-```
+```text
 asdf-php: relocated N Mach-O files
 enabled imagick via 50-imagick.ini
 asdf-php-ext: php -m failed (exit 139) after enabling imagick

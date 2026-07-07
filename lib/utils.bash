@@ -60,8 +60,9 @@ asdf_php_host_tag() {
 # the exact host tag is missing, walk back to older codenames within the
 # same arch.
 asdf_php_host_tag_fallbacks() {
-  local arch="$(asdf_php_arch)"
-  local major="$(asdf_php_macos_major)"
+  local arch major
+  arch="$(asdf_php_arch)"
+  major="$(asdf_php_macos_major)"
   local codenames=(tahoe sequoia sonoma ventura monterey big_sur)
   local start_idx=-1 i codename
 

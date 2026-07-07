@@ -6,7 +6,7 @@ Notable changes grouped by release. Not yet cut a first release
 
 ## [Unreleased]
 
-### Added
+### Added (PEAR registry fix)
 
 - PEAR-registry `.reg` file fixer in `asdf_php_install_seed_etc`.
   Runs a `preg_replace_callback` over
@@ -20,7 +20,7 @@ Notable changes grouped by release. Not yet cut a first release
   config-show + list run clean, pear list enumerates the bundled
   PEAR packages.
 
-### Added
+### Added (ini helper)
 
 - `share/asdf-php-ini`: user ini-override helper (`list` / `list
   --all` / `keys` / `get` / `set` / `unset`). Writes to
@@ -150,7 +150,7 @@ Notable changes grouped by release. Not yet cut a first release
   tests for `lib/formula.bash` parsers.
 - Docs: ADR 0001, README, CONTRIBUTING, TODO, troubleshooting.
 
-### Fixed
+### Fixed (initial run)
 
 - libpq / freetds "Symbol not found: _SSL_CIPHER_get_bits" on
   historical installs. Fixed by resolving deps against the

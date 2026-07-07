@@ -7,9 +7,27 @@ on:
   workflow_dispatch:
 
 jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install lint deps
+        run: npm install --no-save
+      - name: shellcheck
+        run: npm run lint:shell
+      - name: markdownlint
+        run: npm run lint:md
+      - name: prettier
+        run: npm run lint:fmt
+
   unit:
     name: unit + regression
     runs-on: macos-15
+    needs: lint
     steps:
       - uses: actions/checkout@v4
 

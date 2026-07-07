@@ -1,0 +1,32 @@
+{
+  // Config for markdownlint-cli2. Cranked a bit looser than defaults
+  // for a repo that mixes technical docs, ADRs, changelog, and README.
+  "config": {
+    "default": true,
+
+    // Line-length: docs and ADR bodies mix prose + tables + code
+    // fences. Enforcing 80 forces awkward line breaks in tables
+    // and makes long links unreadable.
+    "MD013": false,
+
+    // Table cell padding: cells don't have to align pipe-for-pipe as
+    // long as they render. Rendering (GitHub) doesn't care about the
+    // source-level padding.
+    "MD060": false,
+
+    // Inline HTML: we use `<a id="...">` anchors for cross-links and
+    // occasional `<sub>` in ADRs. Allow.
+    "MD033": false,
+
+    // Bare URLs: docs cite raw URLs (e.g. https://getcomposer.org)
+    // where wrapping in link syntax adds noise. Autolink rendering
+    // handles them.
+    "MD034": false,
+
+    // Duplicate headings: CHANGELOGs repeat `### Added` / `### Fixed`
+    // under every release. Allow duplicates as long as they're under
+    // different parent headings.
+    "MD024": { "siblings_only": true }
+  },
+  "ignores": ["node_modules/**"]
+}

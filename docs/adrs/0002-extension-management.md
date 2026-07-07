@@ -1,9 +1,7 @@
 # ADR mracos/asdf-php - 0002: Extension management
 
-> Date: 2026/07/05
->
-> Authors: `Marcos Ferreira`
-
+> Date: 2026/07/05 \
+> Authors: `Marcos Ferreira` \
 > Status: Accepted (backfill of decisions already in code)
 
 ## Context
@@ -206,7 +204,7 @@ Extension-related files:
 
 Verification path:
 
-```
+```text
 asdf-php-ext install redis
   → cmd_install "redis"
     → asdf_php_formula_fetch_ext "redis@8.1" (falls back to "phpredis@8.1")

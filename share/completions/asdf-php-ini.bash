@@ -4,12 +4,13 @@
 # ~/.bashrc, or drop into your bash_completion.d.
 
 _asdf_php_ini() {
-  local cur prev words cword
+  local cur words cword
   _init_completion || return
 
   local subs="list get set unset keys help"
 
   if [[ $cword -eq 1 ]]; then
+    # shellcheck disable=SC2207  # standard bash-completion idiom
     COMPREPLY=($(compgen -W "$subs" -- "$cur"))
     return
   fi
@@ -19,10 +20,12 @@ _asdf_php_ini() {
       if [[ $cword -eq 2 ]]; then
         local keys
         keys="$(asdf-php-ini keys 2>/dev/null)"
+        # shellcheck disable=SC2207
         COMPREPLY=($(compgen -W "$keys" -- "$cur"))
       fi
       ;;
     list)
+      # shellcheck disable=SC2207
       COMPREPLY=($(compgen -W "--all" -- "$cur"))
       ;;
   esac

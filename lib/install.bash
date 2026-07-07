@@ -25,8 +25,8 @@ asdf_php_install_extract_all() {
 
   mkdir -p "$install_path/Cellar"
 
-  local name tag digest file
-  while IFS=' ' read -r name tag digest file; do
+  local name _tag _digest file
+  while IFS=' ' read -r name _tag _digest file; do
     [[ -z "$name" ]] && continue
     local src="$download_path/$file"
     [[ -f "$src" ]] || asdf_php_die "missing tarball $src (from manifest)"
@@ -117,7 +117,8 @@ WRAPPER
   # plugin's lib/ path baked in so `asdf-php-ext install` can source
   # formula/ghcr/relocate/deps at runtime. list/enable/disable stay
   # self-contained and work even if the plugin is later uninstalled.
-  local plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+  local plugin_dir
+  plugin_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
   if [[ -f "$plugin_dir/share/asdf-php-ext" ]]; then
     sed "s|__PLUGIN_LIB_DIR__|${plugin_dir}/lib|" \
       "$plugin_dir/share/asdf-php-ext" > "$install_path/bin/asdf-php-ext"
@@ -182,6 +183,7 @@ asdf_php_install_seed_etc() {
   # .reg values are paths (no `"`), so a bounded regex works if we
   # anchor on the `s:N:"..."` shape. We use `preg_replace_callback`
   # in PHP so length recomputation is done from the actual byte length.
+  # shellcheck disable=SC2125  # intentional glob-in-assignment; expanded in `for`
   local reg_glob="$install_path/Cellar/php@${majmin}"/*/share/php@${majmin}/pear
   local reg_php='
     $cellar = $argv[1];

@@ -7,8 +7,8 @@ happen.
 ## Full dep chain for heavy C extensions
 
 <a id="full-dep-chain-for-heavy-c-extensions"></a>
-`asdf-php-ext install imagick` currently pulls the imagick + imagemagick
-+ libomp + libheif + libde265 + x265 bottles and stops. imagick.so
+`asdf-php-ext install imagick` currently pulls the imagick, imagemagick,
+libomp, libheif, libde265, x265 bottles and stops. imagick.so
 links against libraries buried deeper (jbig, tiff, lcms, freetype,
 pango, cairo, ghostscript, and probably more) that we don't fetch.
 Result: dyld exits non-zero on `php -m`, cmd_install detects it, and

@@ -19,7 +19,7 @@ load_lib() {
 # every run.
 require_install() {
   local path="$1"
-  [[ -x "$path/bin/php" ]] || skip "no install at $path (run `mise install php@<version>`)"
+  [[ -x "$path/bin/php" ]] || skip "no install at $path (run 'mise install php@<version>')"
 }
 
 # Resolve INSTALL to the highest-versioned real 8.1.x install under

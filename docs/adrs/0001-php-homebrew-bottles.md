@@ -1,9 +1,7 @@
 # ADR mracos/asdf-php - 0001: Wrap shivammathur/homebrew-php bottles as PHP binary source
 
-> Date: 2026/06/18
->
-> Authors: `Marcos Ferreira`
-
+> Date: 2026/06/18 \
+> Authors: `Marcos Ferreira` \
 > Status: Accepted
 
 ## Context
