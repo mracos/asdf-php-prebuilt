@@ -1,5 +1,5 @@
 {
-  "name": "asdf-php",
+  "name": "asdf-php-prebuilt",
   "version": "0.1.0",
   "description": "asdf/mise plugin for PHP via shivammathur/homebrew-php bottles",
   "private": true,

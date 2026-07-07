@@ -1,4 +1,4 @@
-# ADR mracos/asdf-php - 0002: Extension management
+# ADR mracos/asdf-php-prebuilt - 0002: Extension management
 
 > Date: 2026/07/05 \
 > Authors: `Marcos Ferreira` \

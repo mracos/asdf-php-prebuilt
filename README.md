@@ -1,4 +1,4 @@
-# asdf-php
+# asdf-php-prebuilt
 
 asdf/mise plugin that installs PHP on macOS by wrapping
 [`shivammathur/homebrew-php`](https://github.com/shivammathur/homebrew-php)
@@ -23,11 +23,11 @@ Full background, decision, and migration plan: [ADR
 
 ```sh
 # mise
-mise plugin install php https://github.com/mracos/asdf-php
+mise plugin install php https://github.com/mracos/asdf-php-prebuilt
 mise install php@8.1.34
 
 # asdf
-asdf plugin add php https://github.com/mracos/asdf-php
+asdf plugin add php https://github.com/mracos/asdf-php-prebuilt
 asdf install php 8.1.34
 ```
 

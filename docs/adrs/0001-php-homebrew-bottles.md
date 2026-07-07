@@ -1,4 +1,4 @@
-# ADR mracos/asdf-php - 0001: Wrap shivammathur/homebrew-php bottles as PHP binary source
+# ADR mracos/asdf-php-prebuilt - 0001: Wrap shivammathur/homebrew-php bottles as PHP binary source
 
 > Date: 2026/06/18 \
 > Authors: `Marcos Ferreira` \
@@ -107,9 +107,9 @@ team's `.tool-versions`.
 - `bin/install` — extract, stage, relocate, codesign, verify
   `php --version`.
 
-Lives at `~/src/github.com/mracos/asdf-php`. Distributed via
-`mise plugin install php https://github.com/mracos/asdf-php` and the
-equivalent asdf invocation.
+Lives at `~/src/github.com/mracos/asdf-php-prebuilt`. Distributed via
+`mise plugin install php https://github.com/mracos/asdf-php-prebuilt` and
+the equivalent asdf invocation.
 
 ## Consequences
 
