@@ -333,13 +333,20 @@ asdf_php_install_bundle_composer() {
 
 # Sanity-check: php --version runs and reports the expected version.
 # Args: <install_path> <expected_version>
+#
+# Extension init sometimes writes to stderr (e.g. net-snmp prints its
+# "MIB search path" line on load if MIBDIRS points at a nonexistent
+# path). Grep for the `PHP X.Y.Z` line explicitly instead of `head -1`
+# so the check doesn't fail on that pollution.
 asdf_php_install_verify() {
   local install_path="$1" want="$2"
   local php="$install_path/bin/php"
   [[ -x "$php" ]] || asdf_php_die "no executable at $php"
-  local got
-  got="$("$php" --version 2>&1 | head -1)" \
-    || asdf_php_die "php --version failed: $got"
+  local out got
+  out="$("$php" --version 2>&1)" \
+    || asdf_php_die "php --version exited non-zero: $out"
+  got="$(printf '%s\n' "$out" | grep -m1 '^PHP ' || true)"
+  [[ -n "$got" ]] || asdf_php_die "php --version produced no version line: $out"
   if [[ "$got" != *"$want"* ]]; then
     asdf_php_die "php --version reports unexpected version: $got (wanted $want)"
   fi
