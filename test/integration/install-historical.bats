@@ -54,7 +54,11 @@ setup_file() {
 }
 
 @test "composer runs against 8.1.27" {
-  run "$INSTALL/bin/composer" --version
+  # Raw phar shebang (`env php`) relies on the mise shim to resolve
+  # `php`, which on a fresh runner has no pinned version. Route through
+  # `mise exec` (same pattern as install-current) so this install's php
+  # is picked deterministically.
+  run mise exec "php@${VERSION}" -- "$INSTALL/bin/composer" --version
   [ "$status" -eq 0 ]
   [[ "$output" == *"$VERSION"* ]]
 }

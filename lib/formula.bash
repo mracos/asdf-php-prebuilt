@@ -18,9 +18,16 @@ ASDF_PHP_TAP_REF="${ASDF_PHP_TAP_REF:-master}"
 ASDF_PHP_CACHE_DIR="${ASDF_PHP_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/asdf-php}"
 
 # List stable majmin keys in the tap (skip -debug, -zts variants).
+#
+# Anonymous api.github.com is rate-limited to 60/hr per IP, which fails
+# quickly on shared runner pools (GH Actions macOS). Send GITHUB_TOKEN /
+# GH_TOKEN when present so authenticated calls get the 5000/hr budget.
 asdf_php_formula_list_majmins() {
   local api="https://api.github.com/repos/${ASDF_PHP_TAP_REPO}/contents/Formula?ref=${ASDF_PHP_TAP_REF}"
-  curl -fsSL "$api" \
+  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  local -a auth=()
+  [[ -n "$token" ]] && auth=(-H "Authorization: Bearer $token")
+  curl -fsSL "${auth[@]+"${auth[@]}"}" "$api" \
     | awk -F'"' '/"name":/ {print $4}' \
     | grep -E '^php@[0-9]+\.[0-9]+\.rb$' \
     | sed -E 's/^php@//; s/\.rb$//' \

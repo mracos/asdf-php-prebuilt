@@ -11,9 +11,11 @@ setup_file() {
   [[ "${ASDF_PHP_RUN_INTEGRATION:-0}" == "1" ]] \
     || skip "set ASDF_PHP_RUN_INTEGRATION=1 to run integration tests"
 
-  # Pick whichever 8.1 install is already active.
+  # Pick whichever 8.1 install is already active. `mise where` under
+  # bats' errexit exits nonzero when nothing is pinned; swallow so we
+  # reach the fallback below instead of failing setup_file hard.
   export INSTALL
-  INSTALL="$(mise where php@8.1 2>/dev/null)"
+  INSTALL="$(mise where php@8.1 2>/dev/null || true)"
   if [[ ! -x "$INSTALL/bin/php" ]]; then
     # Fall back to any installed 8.1.x.
     for d in "$HOME/.local/share/mise/installs/php/8.1"*; do
