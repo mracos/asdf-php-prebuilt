@@ -108,6 +108,18 @@ export PHP_INI_SCAN_DIR="\${PHP_INI_SCAN_DIR:-\$prefix/etc/php/${majmin}/conf.d}
 # from brew's build). Without this, pecl config-get ext_dir returns brew's
 # path and pecl-installed .so files land outside our prefix.
 export PHP_PEAR_SYSCONF_DIR="\${PHP_PEAR_SYSCONF_DIR:-\$prefix/etc/php/${majmin}}"
+# When the snmp extension is loaded (default on 8.6+), libnetsnmp_init
+# writes "MIB search path: <compiled-in>" + a wall of "Cannot find
+# module (X-MIB)" to stderr if the compiled-in MIBDIRS path (baked in
+# at brew's build → /opt/homebrew/Cellar/net-snmp/…/share/snmp/mibs)
+# doesn't exist on the host. Point MIBDIRS at the bundled MIBs; fall
+# back to disabling MIB parsing if net-snmp wasn't bundled with this
+# PHP version. Users who need custom MIBs override either var.
+if [[ -d "\$prefix/opt/net-snmp/share/snmp/mibs" ]]; then
+  export MIBDIRS="\${MIBDIRS-\$prefix/opt/net-snmp/share/snmp/mibs}"
+else
+  export MIBS="\${MIBS-}"
+fi
 exec "\$prefix/opt/php@${majmin}/bin/${name}" "\$@"
 WRAPPER
     chmod +x "$install_path/bin/$name"

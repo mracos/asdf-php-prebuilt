@@ -6,6 +6,34 @@ Notable changes grouped by release. Not yet cut a first release
 
 ## [Unreleased]
 
+### Fixed (net-snmp MIB warnings on fresh hosts)
+
+- Wrapper `bin/php` now sets `MIBDIRS` to the bundled net-snmp's mibs
+  dir (`$prefix/opt/net-snmp/share/snmp/mibs`) when present, falling
+  back to `MIBS=` when it's not. Without this, `libnetsnmp_init`
+  writes `MIB search path: /opt/homebrew/Cellar/net-snmp/...` +
+  a wall of `Cannot find module (X-MIB)` to stderr on every PHP
+  invocation with the snmp extension loaded (default on 8.6+),
+  because the compile-time MIBDIRS was baked in from brew's build.
+- `asdf_php_install_verify` now greps for the `PHP` version line
+  in `php --version` output rather than `head -1`, so any leftover
+  extension init chatter doesn't fail the install-verify step.
+
+### Fixed (CI failures on GH Actions macOS)
+
+- `asdf_php_formula_list_majmins` sends `Authorization: Bearer` when
+  `GITHUB_TOKEN`/`GH_TOKEN` is in the env. Anon `api.github.com`
+  hits the 60/hr per-IP budget shared across the macOS runner pool
+  and returns 403, which zeroed out `bin/list-all` and made
+  install-current + install-latest skip everything.
+- `ext-pecl-flow.bats` setup_file tolerates `mise where` non-zero
+  under bats' errexit so it hits the skip branch instead of
+  failing hard when no 8.1.x is installed yet.
+- `install-historical.bats` runs composer via `mise exec` so the
+  raw phar's `env php` shebang resolves against this install's
+  PHP, not the (unset) default of a fresh runner's mise shim.
+  Matches the pattern already used in install-current.
+
 ### Added (PEAR registry fix)
 
 - PEAR-registry `.reg` file fixer in `asdf_php_install_seed_etc`.
