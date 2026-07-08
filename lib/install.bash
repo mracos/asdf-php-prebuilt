@@ -266,20 +266,30 @@ asdf_php_install_seed_etc() {
   # <keg>/pecl/<api> during post_install. We do the equivalent locally:
   # symlink bundled .so files into pecl/<api>/ and set extension_dir
   # there. One dir, both origins.
-  local php_lib api_ver ext_dir pecl_dir
-  php_lib="$install_path/opt/php@${majmin}/lib/php"
-  api_ver="$(find "$php_lib" -maxdepth 1 -type d -name '[0-9]*' -exec basename {} \; | head -1)"
-  if [[ -z "$api_ver" ]]; then
-    asdf_php_warn "could not find php extension API dir under $php_lib"
-    return 0
-  fi
-  pecl_dir="$install_path/opt/php@${majmin}/pecl/${api_ver}"
+  # Derive the pecl extension_dir from php-config, which is authoritative
+  # (baked at brew build time, then relocated by relocate_text_scripts).
+  # Previously we globbed `lib/php/<api>/` for the API version and built
+  # our own `pecl/<api>/` path, which broke on 8.6 where the extension_dir
+  # baked into php-config didn't match a single glob-visible dir under
+  # lib/php.
+  local php_config ext_dir api_ver pecl_dir php_lib
+  php_config="$install_path/opt/php@${majmin}/bin/php-config"
+  [[ -x "$php_config" ]] || asdf_php_die "no php-config at $php_config after relocation"
+  pecl_dir="$("$php_config" --extension-dir 2>/dev/null)" \
+    || asdf_php_die "php-config --extension-dir failed"
+  [[ -n "$pecl_dir" ]] || asdf_php_die "php-config --extension-dir returned empty"
+  api_ver="${pecl_dir##*/}"
   mkdir -p "$pecl_dir"
+
+  # Symlink bundled .so files into pecl/<api>/ so both origins share a dir.
+  php_lib="$install_path/opt/php@${majmin}/lib/php/${api_ver}"
   local bundled_so
-  for bundled_so in "$php_lib/$api_ver"/*.so; do
-    [[ -e "$bundled_so" ]] || continue
-    ln -snf "../../lib/php/${api_ver}/${bundled_so##*/}" "$pecl_dir/${bundled_so##*/}"
-  done
+  if [[ -d "$php_lib" ]]; then
+    for bundled_so in "$php_lib"/*.so; do
+      [[ -e "$bundled_so" ]] || continue
+      ln -snf "../../lib/php/${api_ver}/${bundled_so##*/}" "$pecl_dir/${bundled_so##*/}"
+    done
+  fi
   ext_dir="$pecl_dir"
 
   local conf_d="$install_path/etc/php/${majmin}/conf.d"
