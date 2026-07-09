@@ -272,7 +272,7 @@ asdf_php_install_seed_etc() {
   # our own `pecl/<api>/` path, which broke on 8.6 where the extension_dir
   # baked into php-config didn't match a single glob-visible dir under
   # lib/php.
-  local php_config ext_dir api_ver pecl_dir php_lib
+  local php_config ext_dir api_ver pecl_dir
   php_config="$install_path/opt/php@${majmin}/bin/php-config"
   [[ -x "$php_config" ]] || asdf_php_die "no php-config at $php_config after relocation"
   pecl_dir="$("$php_config" --extension-dir 2>/dev/null)" \
@@ -281,13 +281,34 @@ asdf_php_install_seed_etc() {
   api_ver="${pecl_dir##*/}"
   mkdir -p "$pecl_dir"
 
-  # Symlink bundled .so files into pecl/<api>/ so both origins share a dir.
-  php_lib="$install_path/opt/php@${majmin}/lib/php/${api_ver}"
-  local bundled_so
-  if [[ -d "$php_lib" ]]; then
-    for bundled_so in "$php_lib"/*.so; do
+  # Symlink bundled .so files into pecl_dir. Bottles ship them at one
+  # of two paths depending on the formula's era:
+  #   - 8.1/8.2/8.3-style: <keg>/lib/php/<api>/*.so
+  #   - 8.6+ style:        <keg>/lib/php/pecl/<api>/*.so
+  # Try both. If neither has files, dump a listing so future breakage
+  # is diagnosable from CI logs.
+  local keg="$install_path/opt/php@${majmin}"
+  local bundled_dir="" candidate
+  for candidate in "$keg/lib/php/${api_ver}" "$keg/lib/php/pecl/${api_ver}"; do
+    if [[ -d "$candidate" ]] && compgen -G "$candidate/*.so" >/dev/null; then
+      bundled_dir="$candidate"
+      break
+    fi
+  done
+  if [[ -n "$bundled_dir" ]]; then
+    local bundled_so rel
+    for bundled_so in "$bundled_dir"/*.so; do
       [[ -e "$bundled_so" ]] || continue
-      ln -snf "../../lib/php/${api_ver}/${bundled_so##*/}" "$pecl_dir/${bundled_so##*/}"
+      # Compute the pecl_dir → bundled_so relative link.
+      rel="$(python3 -c "import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))" \
+        "$bundled_so" "$pecl_dir" 2>/dev/null)" || rel="$bundled_so"
+      ln -snf "$rel" "$pecl_dir/${bundled_so##*/}"
+    done
+  else
+    asdf_php_warn "no bundled .so found under $keg/lib/php/{$api_ver,pecl/$api_ver}"
+    asdf_php_warn "keg layout under lib/php:"
+    find "$keg/lib/php" -maxdepth 3 -print 2>&1 | head -20 | while read -r line; do
+      asdf_php_warn "  $line"
     done
   fi
   ext_dir="$pecl_dir"
