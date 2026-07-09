@@ -305,11 +305,11 @@ asdf_php_install_seed_etc() {
       ln -snf "$rel" "$pecl_dir/${bundled_so##*/}"
     done
   else
-    asdf_php_warn "no bundled .so found under $keg/lib/php/{$api_ver,pecl/$api_ver}"
-    asdf_php_warn "keg layout under lib/php:"
-    find "$keg/lib/php" -maxdepth 3 -print 2>&1 | head -20 | while read -r line; do
-      asdf_php_warn "  $line"
-    done
+    # Not an error: from 8.6 onward, shivammathur's formulas dropped
+    # `--enable-opcache` (and related) so those extensions compile
+    # statically into the php binary and never emit a `.so`. pecl still
+    # installs shared extensions into pecl_dir at runtime.
+    asdf_php_log "no bundled shared .so under $keg/lib/php (statically linked; expected on 8.6+)"
   fi
   ext_dir="$pecl_dir"
 
