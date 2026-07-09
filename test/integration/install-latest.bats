@@ -68,8 +68,14 @@ setup_file() {
   local ext_dir
   ext_dir="$("$INSTALL/bin/php-config" --extension-dir)"
   [[ "$ext_dir" == "$INSTALL"/* ]]
-  [ -e "$ext_dir/opcache.so" ] \
-    || { echo "opcache.so not in unified ext_dir on latest: $(ls "$ext_dir")"; false; }
+  if [ ! -e "$ext_dir/opcache.so" ]; then
+    echo "opcache.so not in unified ext_dir on latest: $(ls "$ext_dir")"
+    echo "--- opcache.so search across install:"
+    find "$INSTALL" -name 'opcache.so' 2>/dev/null | head -20
+    echo "--- lib/php tree under keg:"
+    find "$INSTALL"/Cellar/php@*/*/lib/php -maxdepth 3 2>/dev/null | head -40
+    false
+  fi
 }
 
 @test "asdf-php-ext list works on the latest" {
