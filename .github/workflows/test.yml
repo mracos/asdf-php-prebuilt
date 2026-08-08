@@ -5,6 +5,13 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+  schedule:
+    # "At 09:17 on Monday." Catches upstream formula/bottle drift: the tap
+    # ships new PHP versions continuously (bin/list-all reads it live), and
+    # install-latest.bats installs the newest one, so a weekly run flags a
+    # broken new major.minor before a user hits it. Odd minute dodges
+    # top-of-hour runner congestion.
+    - cron: "17 9 * * 1"
 
 jobs:
   lint:
