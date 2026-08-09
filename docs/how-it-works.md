@@ -1,3 +1,5 @@
+# How it works
+
 ## What `mise install` does under the hood
 
 1. Read `Formula/php@<MAJMIN>.rb` from the tap. If the requested patch
@@ -56,4 +58,3 @@ version are mostly download-bound.
 | `~/.cache/asdf-php/formula-*.rb`     | per-(formula, ref) on-disk formula cache. |
 | `~/.cache/asdf-php/core-ref-*.sha`   | resolved homebrew-core sha per timestamp. |
 | `<mise-installs>/php/<version>/`     | the install prefix. Fully self-contained, safe to `rm -rf`. |
-
