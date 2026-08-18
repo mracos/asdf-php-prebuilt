@@ -17,6 +17,11 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    env:
+      # The npm shellcheck package downloads its binary from GitHub releases
+      # at first run; anonymous requests from shared runner IPs hit the rate
+      # limit (403), so authenticate the download.
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
