@@ -76,7 +76,9 @@ self-built static binaries are in
 
 ## Tests
 
-Bats-based, split into three tiers under `test/`:
+`npm install` first, it pulls bats, shellcheck, markdownlint and
+prettier. Tests are bats-based, split into three tiers under
+`test/`:
 
 - `test/unit/` (15 assertions, ~1s, offline). Feed real formula
   fixtures through the parsers. `npm test` runs these by default.
@@ -93,6 +95,18 @@ CI runs all three tiers on `macos-14` and `macos-15` via
 Discipline: every fix pairs with a test in the same commit.
 Regression tier if it can be checked cheaply against an existing
 install; integration tier if it needs a fresh `mise install`.
+
+## Linting
+
+```sh
+npm run lint         # all three
+npm run lint:shell   # shellcheck -x -S warning over bin/, lib/, share/
+npm run lint:md      # markdownlint-cli2 over every *.md
+npm run lint:fmt     # prettier --check over json/yml
+```
+
+CI gates on `lint` before the test jobs run, so a shellcheck warning
+fails the build before any install is attempted.
 
 ## Commits
 
