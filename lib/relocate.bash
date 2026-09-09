@@ -135,6 +135,36 @@ asdf_php_is_macho() {
   esac
 }
 
+# Every dylib reference of <file> that we can resolve statically must
+# exist on disk. Prints the ones that don't, one per line.
+#
+# dyld failing this is what surfaces as a `php -m` segfault, and the
+# crash names nothing useful. Checking first turns it into an error
+# message that names the missing dylib.
+# @rpath/@executable_path refs depend on load-time state, so they're
+# skipped rather than guessed at.
+# Args: <file>
+asdf_php_unresolved_dylibs() {
+  local file="$1"
+  local dir="${file%/*}"
+  local out line ref path
+
+  out="$(otool -L "$file" 2>/dev/null)" || return 0
+
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[[:space:]]+([^[:space:]]+) ]] || continue
+    ref="${BASH_REMATCH[1]}"
+    case "$ref" in
+      /usr/lib/*|/System/*)          continue ;;
+      @@HOMEBREW_*)                  echo "$ref"; continue ;;
+      @loader_path/*)                path="${dir}/${ref#@loader_path/}" ;;
+      /*)                            path="$ref" ;;
+      *)                             continue ;;
+    esac
+    [[ -e "$path" ]] || echo "$ref"
+  done <<< "$out"
+}
+
 # Walk all Mach-O files under Cellar/ and rewrite their placeholders.
 # Args: <install_path>
 asdf_php_relocate_all() {

@@ -6,6 +6,27 @@ Notable changes grouped by release. Not yet cut a first release
 
 ## [Unreleased]
 
+### Fixed (`asdf-php-ext install` segfaulting php on extensions with C deps)
+
+- `_stage_ext_so` now relocates the `.so` **after** copying it into
+  `ext_dir`, at the destination path. shivammathur's
+  `AbstractPhpExtension` installs `modules/<name>.so` at the keg root,
+  which `asdf_php_relocate_all`'s `*/bin/*`, `*/lib/*`, `*/ext/*`
+  filter never reached, so `imagick.so` kept its literal
+  `@@HOMEBREW_PREFIX@@` dylib refs and `php -m` died with exit 139.
+  Relocating the source instead would have been wrong too: the keg
+  root is 3 levels under the prefix, `ext_dir` is 5, and `@loader_path`
+  resolves from wherever dyld loaded the file.
+- New `asdf_php_unresolved_dylibs` preflight: before enabling an
+  extension, every statically-resolvable dylib ref must exist in the
+  prefix. A missing one now names the dylib and rolls back instead of
+  letting dyld crash php with no useful message.
+- Every post-`cp` failure in `cmd_install` goes through `_fail_install`,
+  which rolls back before exiting. A bare `return 1` under `set -e`
+  used to exit with sibling extensions still staged and registered in
+  `conf.d`. That is the exact state that makes every later `php`
+  invocation crash.
+
 ### Fixed (relocation running out of file descriptors mid-walk)
 
 - `asdf_php_relocate_file` no longer spends a subshell per file (depth

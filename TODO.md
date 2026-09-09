@@ -4,38 +4,43 @@ Explicitly deferred work. Each bullet is in scope someday, just not
 right now. Ordered loosely by likely value, not by when they'll
 happen.
 
-## Full dep chain for heavy C extensions
+## Pin ext-tap deps to a contemporary homebrew-core ref
 
 <a id="full-dep-chain-for-heavy-c-extensions"></a>
-`asdf-php-ext install imagick` currently pulls the imagick, imagemagick,
-libomp, libheif, libde265, x265 bottles and stops. imagick.so
-links against libraries buried deeper (jbig, tiff, lcms, freetype,
-pango, cairo, ghostscript, and probably more) that we don't fetch.
-Result: dyld exits non-zero on `php -m`, cmd_install detects it, and
-rolls back. imagick just isn't installable through this path.
+`deps_walk_ext` resolves homebrew-core deps against `master`, so an
+extension bottle gets whatever version of its C deps homebrew-core
+ships *today*, not the ones it was linked against. When upstream
+bumps a soname in between, the extension can't load.
 
-Two mechanisms to fix. Either:
+Live example (2026-09): the `imagick@8.2` 3.8.1_2 bottle for
+`arm64_tahoe` was built 2025-11-26 against imagemagick 7.1.2-8, which
+shipped `libMagickWand-7.Q16HDRI.10.dylib`. homebrew-core is on
+7.1.2-31 now, which ships `.11`. Everything downloads and relocates
+cleanly; the two Magick refs just don't exist, and `asdf-php-ext`
+rolls back naming them. Nothing to fix on our side until either the
+tap rebuilds imagick or we pin.
 
-1. Fully walk homebrew-core deps of ext-tap formulas. `deps_walk_ext`
-   already recurses through the tap side; the missing piece is
-   pushing homebrew-core deps' own `depends_on` chains, not just
-   their bottles. That means switching from "resolve one level"
-   to full transitive walk on the homebrew-core side too, with
-   dedup + cycle protection.
-2. Post-install dyld scan: `otool -L` each staged `.so`, walk the
-   `@loader_path/../../../../opt/<X>/lib/<Y>.dylib` targets, verify
-   each exists, fetch the missing ones. Simpler code, roughly the
-   same effect. Doesn't reuse the tap formula's `depends_on` info.
+`bin/download` already does the pinning for historical php installs:
+`asdf_php_history_find_core_ref <iso-date>` → a homebrew-core sha, fed
+to `deps_walk` as `core_ref`. The ext path needs the same, and the
+open question is where the date comes from:
 
-Approach 2 is probably the smaller change. Approach 1 keeps the
-formula file as single source of truth. Pick when someone actually
-needs imagick.
+1. The bottle's GHCR manifest annotation
+   (`org.opencontainers.image.created`): available before download,
+   one extra request, no clone.
+2. A shallow clone of `shivammathur/homebrew-extensions` + `git log`
+   on the formula, mirroring `history.bash`. Consistent with what's
+   there, but a second ~10MB clone.
 
-Symptom to guard against: `php -m` segfaulting mid-install. The
-rollback in `cmd_install` catches it today; adding a regression test
-requires an intentionally-broken .so (fake shared lib with an
-unresolvable LC_LOAD_DYLIB entry) instead of relying on imagick
-specifically since its dep tree changes over time.
+Caveats either way: old bottles may not have an `arm64_tahoe` build
+(the host-tag fallback chain covers some of this), and the ext's deps
+would then come from a different era than the base php install's,
+which `skip_set` leaves at `master`.
+
+Symptom to guard against: `php -m` segfaulting mid-install. Covered by
+`test/regression/ext-so-relocation.bats`, which builds a Mach-O with
+an unresolvable `LC_LOAD_DYLIB` entry rather than depending on
+imagick's dep tree, which changes over time.
 
 ## `.mise.toml` `ASDF_PHP_EXTS` for declarative extensions
 

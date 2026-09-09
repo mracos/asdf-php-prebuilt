@@ -250,24 +250,61 @@ cmd_install() {
   # every change atomically. Leaving a bad extension in conf.d would
   # segfault every subsequent `php -m` invocation.
   local -a staged=()
-  _stage_ext_so() {
-    local formula_name="$1" load_name="$2"
-    local so
-    so="$(find "$prefix/Cellar/${formula_name}" -type f -name "${load_name}.so" 2>/dev/null | head -1)"
-    [[ -z "$so" ]] && {
-      echo "asdf-php-ext: no ${load_name}.so under Cellar/${formula_name}" >&2
-      return 1
-    }
-    cp "$so" "$ext_dir/${load_name}.so"
-    cmd_enable "$load_name"
-    staged+=("$load_name")
-  }
 
   _rollback_stages() {
     local n
     for n in ${staged[@]+"${staged[@]}"}; do
       rm -f "$ext_dir/${n}.so" "$conf_d/50-${n}.ini"
     done
+  }
+
+  # Abort an install that has already touched the prefix. Every failure
+  # after the first `cp` has to come through here. A bare `return 1`
+  # under `set -e` would exit with sibling extensions still staged and
+  # registered in conf.d, which is exactly the state that makes every
+  # later `php` invocation crash.
+  _fail_install() {
+    local line
+    for line in "$@"; do echo "asdf-php-ext: $line" >&2; done
+    if [[ "${#staged[@]}" -gt 0 ]]; then
+      echo "asdf-php-ext: rolling back ${#staged[@]} staged extension(s) to keep php runnable" >&2
+      _rollback_stages
+    fi
+    exit 1
+  }
+
+  _stage_ext_so() {
+    local formula_name="$1" load_name="$2"
+    local so dest missing
+    so="$(find "$prefix/Cellar/${formula_name}" -type f -name "${load_name}.so" 2>/dev/null | head -1)"
+    [[ -n "$so" ]] \
+      || _fail_install "no ${load_name}.so under Cellar/${formula_name}"
+
+    dest="$ext_dir/${load_name}.so"
+    cp "$so" "$dest"
+    staged+=("$load_name")
+
+    # Relocate the copy, at its destination. The tap's
+    # AbstractPhpExtension does `prefix.install "modules/<name>.so"`, so
+    # the .so sits at the keg root: outside the paths relocate_all
+    # walks, and three levels under the prefix where ext_dir is five.
+    # Relocating the source instead would bake in a @loader_path that
+    # resolves to <prefix>/Cellar/php@<majmin> once copied.
+    asdf_php_relocate_file "$dest" "$prefix"
+
+    # dyld can't resolve a missing dylib and php -m dies on the spot
+    # (exit 139, no useful message). Name what's missing instead.
+    missing="$(asdf_php_unresolved_dylibs "$dest")"
+    if [[ -n "$missing" ]]; then
+      local m
+      echo "asdf-php-ext: ${load_name}.so links dylibs that are not in this prefix:" >&2
+      while IFS= read -r m; do echo "  $m" >&2; done <<< "$missing"
+      _fail_install \
+        "the ${formula_name} bottle was built against different versions of its deps" \
+        "than homebrew-core ships today (a soname bump upstream); retry once the tap rebuilds it"
+    fi
+
+    cmd_enable "$load_name"
   }
 
   # 1. sibling ext-tap deps first (so they load before the primary
@@ -290,29 +327,25 @@ cmd_install() {
   # formula was `phpredis@8.1`; the .so is always `<name>.so`.
   _stage_ext_so "$ext_formula_name" "$name"
 
-  # Verify: `php -m` must exit 0 AND list the extension. Extensions
-  # with missing runtime deps (e.g. imagick without a fully-staged
-  # imagemagick + libheif + libde265 + x265 + ... chain) may segfault
-  # here rather than just fail to load, so we check both the exit
+  # Verify: `php -m` must exit 0 AND list the extension. The dylib
+  # preflight in _stage_ext_so catches the common cause of a crash here
+  # (a dep that isn't in the prefix), but a dylib that exists and is
+  # still ABI-incompatible only shows up once dyld binds symbols, and
+  # that surfaces as a segfault, not a load error. Check both the exit
   # status and the output.
   local m_out m_status
   m_out="$("$prefix/bin/php" -m 2>&1)" || m_status=$?
   m_status="${m_status:-0}"
 
   if [[ "$m_status" -ne 0 ]]; then
-    echo "asdf-php-ext: php -m failed (exit $m_status) after enabling ${name}" >&2
-    echo "asdf-php-ext: this usually means a required dylib isn't present or isn't relocated." >&2
-    echo "asdf-php-ext: rolling back ${#staged[@]} staged extension(s) to keep php runnable" >&2
-    _rollback_stages
-    echo "asdf-php-ext: check missing deps with: otool -L <staged>.so" >&2
-    exit 1
+    _fail_install \
+      "php -m failed (exit $m_status) after enabling ${name}" \
+      "this usually means a required dylib isn't present or isn't relocated" \
+      "inspect with: otool -L ${ext_dir}/${name}.so"
   fi
 
   if ! printf '%s\n' "$m_out" | grep -qiE "^${name}$"; then
-    echo "asdf-php-ext: ${name}.so was enabled but php -m doesn't list it" >&2
-    echo "asdf-php-ext: rolling back ${#staged[@]} staged extension(s)" >&2
-    _rollback_stages
-    exit 1
+    _fail_install "${name}.so was enabled but php -m doesn't list it"
   fi
 
   echo "installed ${name}"
