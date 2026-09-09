@@ -6,6 +6,19 @@ Notable changes grouped by release. Not yet cut a first release
 
 ## [Unreleased]
 
+### Fixed (relocation running out of file descriptors mid-walk)
+
+- `asdf_php_relocate_file` no longer spends a subshell per file (depth
+  and `../` prefix) or per dylib ref (placeholder mapping), and reads
+  `otool` output from a here-string instead of a process substitution.
+  With ~2k Mach-O files per install, a low `ulimit -n` was enough to
+  hit `cannot make pipe for command substitution`, after which the dep
+  loop read from a closed fd and left files silently unrelocated while
+  still reporting success.
+- `otool -L` failure is now warned rather than swallowed.
+- `asdf_php_is_macho` reads the magic with one `xxd -p -l 4` instead of
+  `head -c 4 | xxd -p`, halving the forks on the hottest path.
+
 ### Fixed (net-snmp MIB warnings on fresh hosts)
 
 - Wrapper `bin/php` now sets `MIBDIRS` to the bundled net-snmp's mibs

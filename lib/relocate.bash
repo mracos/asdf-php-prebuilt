@@ -22,69 +22,100 @@
 #   For a file at <prefix>/Cellar/<formula>/<version>/<subpath>/<file>,
 #   `<up>` is one `../` per directory between the file and <prefix>.
 #   For typical bin/<exe> and lib/<dylib>, that's 4 ups.
+#
+#   `<up>` is a property of where the file *is loaded from*, not of
+#   where it was shipped. Anything that copies a Mach-O file elsewhere
+#   in the prefix has to relocate it again at the destination. See
+#   `_stage_ext_so` in share/asdf-php-ext.
 
 set -euo pipefail
 
-# Count directories above a file inside the install prefix.
-# Args: <file> <install_path>
-# Returns: integer depth (4 for <prefix>/Cellar/X/Y/bin/foo)
-asdf_php_relocate_depth() {
-  local file="$1" install_path="$2"
-  local rel="${file#${install_path%/}/}"
-  awk -v s="$rel" 'BEGIN{n=gsub("/","/",s); print n}'
+# Map a placeholder-prefixed path to its @loader_path-relative form.
+# Args: <path> <up>. Result lands in $asdf_php_relocated_path; returns
+# 1 when the path carries no placeholder.
+#
+# Sets a global instead of echoing: this runs once per dylib reference
+# per file (tens of thousands of times per install), and a command
+# substitution costs a fork and a pipe every time.
+asdf_php_relocate_map_path() {
+  local p="$1" up="$2"
+  case "$p" in
+    @@HOMEBREW_PREFIX@@/*)
+      asdf_php_relocated_path="@loader_path/${up}/${p#@@HOMEBREW_PREFIX@@/}" ;;
+    @@HOMEBREW_CELLAR@@/*)
+      asdf_php_relocated_path="@loader_path/${up}/Cellar/${p#@@HOMEBREW_CELLAR@@/}" ;;
+    *)
+      asdf_php_relocated_path=""
+      return 1 ;;
+  esac
 }
 
-# Build the "../../../.." prefix for a given depth.
-asdf_php_relocate_up() {
-  local depth="$1" up="" i
-  for ((i=0; i<depth; i++)); do up="${up}../"; done
-  echo "${up%/}"
+# The "../../../.." that walks from <file> back up to <install_path>.
+# Result lands in $asdf_php_relocate_up (global, same reason as above).
+asdf_php_relocate_up_for() {
+  local rel="${1#${2%/}/}" up=""
+  while [[ "$rel" == */* ]]; do
+    rel="${rel#*/}"
+    up="${up}../"
+  done
+  asdf_php_relocate_up="${up%/}"
 }
 
 # Rewrite a single Mach-O file's placeholder dylib refs and re-codesign.
 # Failures are warned and skipped (one file shouldn't block the whole install).
 # Args: <file> <install_path>
+#
+# Fork budget matters here: relocate_all calls this ~2k times per
+# install and every `$(...)` / `<(...)` is a pipe. A shell that runs out
+# of descriptors mid-walk fails with "cannot make pipe for command
+# substitution", after which the dep loop reads from a closed fd and
+# leaves the file silently unrelocated: a broken install that still
+# reports success. Everything below stays in-process except `otool` and
+# the rewrite tools themselves.
 asdf_php_relocate_file() {
   local file="$1" install_path="$2"
-  local depth up
-  depth="$(asdf_php_relocate_depth "$file" "$install_path")"
-  up="$(asdf_php_relocate_up "$depth")"
+  asdf_php_relocate_up_for "$file" "$install_path"
+  local up="$asdf_php_relocate_up"
 
-  local touched=0 dep new id
+  local touched=0 out line dep
 
-  # Map a placeholder-prefixed path to a @loader_path-relative form.
-  # Echoes the rewritten path, or echoes empty and returns 1 if no
-  # placeholder matched.
-  _asdf_php_relocate_path() {
-    local p="$1"
-    if [[ "$p" == @@HOMEBREW_PREFIX@@/* ]]; then
-      echo "@loader_path/${up}/${p#@@HOMEBREW_PREFIX@@/}"
-    elif [[ "$p" == @@HOMEBREW_CELLAR@@/* ]]; then
-      echo "@loader_path/${up}/Cellar/${p#@@HOMEBREW_CELLAR@@/}"
-    else
-      return 1
-    fi
-  }
+  if ! out="$(otool -L "$file" 2>/dev/null)"; then
+    asdf_php_warn "otool -L failed for $file; left unrelocated"
+    return 0
+  fi
 
-  while IFS= read -r dep; do
-    [[ -z "$dep" ]] && continue
-    new="$(_asdf_php_relocate_path "$dep")" || continue
-    if install_name_tool -change "$dep" "$new" "$file" 2>/dev/null; then
+  # `otool -L` prints the file's own name unindented, then one
+  # tab-indented "<path> (compatibility version ...)" per reference.
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[[:space:]]+([^[:space:]]+) ]] || continue
+    dep="${BASH_REMATCH[1]}"
+    asdf_php_relocate_map_path "$dep" "$up" || continue
+    if install_name_tool -change "$dep" "$asdf_php_relocated_path" "$file" 2>/dev/null; then
       touched=1
     else
       asdf_php_warn "install_name_tool -change failed for $file: $dep"
     fi
-  done < <(otool -L "$file" 2>/dev/null | awk 'NR>1 {print $1}')
+  done <<< "$out"
 
-  id="$(otool -D "$file" 2>/dev/null | awk 'NR==2 {print $1}')"
-  if new="$(_asdf_php_relocate_path "$id")"; then
-    if install_name_tool -id "$new" "$file" 2>/dev/null; then
+  # `otool -D` prints the file's own name, then LC_ID_DYLIB on line 2
+  # (unindented, unlike -L).
+  local id="" n=0
+  if out="$(otool -D "$file" 2>/dev/null)"; then
+    while IFS= read -r line; do
+      n=$((n + 1))
+      if [[ "$n" -eq 2 ]]; then
+        id="${line%% *}"
+        break
+      fi
+    done <<< "$out"
+  fi
+  if [[ -n "$id" ]] && asdf_php_relocate_map_path "$id" "$up"; then
+    if install_name_tool -id "$asdf_php_relocated_path" "$file" 2>/dev/null; then
       touched=1
     else
       asdf_php_warn "install_name_tool -id failed for $file"
     fi
   fi
-  unset -f _asdf_php_relocate_path
 
   if [[ "$touched" -eq 1 ]]; then
     codesign --force --sign - "$file" 2>/dev/null \
@@ -97,7 +128,7 @@ asdf_php_is_macho() {
   local f="$1"
   [[ -f "$f" && ! -L "$f" ]] || return 1
   local magic
-  magic="$(head -c 4 "$f" 2>/dev/null | xxd -p 2>/dev/null)"
+  magic="$(xxd -p -l 4 "$f" 2>/dev/null)"
   case "$magic" in
     cefaedfe|cffaedfe|feedface|feedfacf|cafebabe|bebafeca) return 0 ;;
     *) return 1 ;;
