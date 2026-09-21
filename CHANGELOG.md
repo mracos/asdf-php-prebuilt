@@ -6,6 +6,28 @@ Notable changes grouped by release. Not yet cut a first release
 
 ## [Unreleased]
 
+### Fixed (missing bottles silently shipping a broken prefix)
+
+- The bottle fallback chain now ends at brew's arch-independent `all`
+  tag. `ca-certificates` carries no per-codename bottle, so it had
+  been silently skipped on every host since the walker was written.
+- A dep that resolves to no bottle is now fatal instead of a warning.
+  Skipping it produced a prefix linking against a dylib nobody
+  installed, which surfaced much later as an opaque `dyld: Library
+  not loaded` abort in the middle of pear registry setup.
+- Added `golden_gate` (macOS 27) to the release table, which the host
+  tag and fallback chain now share instead of each keeping their own
+  copy. Before, macOS 27 died with `unsupported macOS major: 27`.
+
+### Changed (CI matrix tracks upstream bottle support)
+
+- Integration matrix moves from macOS 14 + 15 to 15 + 26. homebrew-core
+  bottles the three newest releases, and Sonoma fell off that list in
+  Sept 2026: `xz` lost its `arm64_sonoma` bottle on the 12th, a dozen
+  more deps followed within the week, and shivammathur's own tap has no
+  Sonoma bottle for php@8.6. GitHub deprecated the runner image in the
+  same window.
+
 ### Fixed (`asdf-php-ext install` segfaulting php on extensions with C deps)
 
 - `_stage_ext_so` now relocates the `.so` **after** copying it into
