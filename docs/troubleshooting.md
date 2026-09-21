@@ -91,18 +91,25 @@ mise install php@<version>
 
 If it persists, file an issue with the version + macOS major.
 
-## "no bottle for '<dep>' on arm64_tahoe (or fallbacks); skipping"
+## "no bottle for dep '<dep>' on arm64_tahoe (or fallbacks)"
 
-A homebrew-core dep doesn't have a macOS bottle for any codename in
-our fallback chain (`arm64_tahoe → arm64_sequoia → arm64_sonoma →
-arm64_ventura → arm64_monterey → arm64_big_sur`). For most deps this
-is non-fatal — the dep is data-only (e.g. `ca-certificates`) and PHP
-runs fine without it.
+A homebrew-core dep has no bottle for any tag in our fallback chain
+(`arm64_tahoe -> arm64_sequoia -> arm64_sonoma -> arm64_ventura ->
+arm64_monterey -> arm64_big_sur -> all`). This aborts the install.
 
-If the missing dep is something PHP actually links against, the
-install will succeed but `php` will fail at load time with
-`dyld: Library not loaded`. In that case the dep's formula was
-probably renamed or moved; check
+Almost always this means the host's macOS is past upstream support.
+homebrew-core bottles the three newest releases only, and a formula
+drops the stale tags the next time it is rebuilt, so an older host
+decays one formula at a time rather than all at once. Sonoma lost
+`xz` on 2026-09-12 and a dozen more deps within the week. The fix is
+to upgrade macOS; there is no source-build fallback here by design.
+
+The failure is fatal on purpose. Skipping the dep yields a prefix
+that links against a dylib nobody installed, and that only surfaces
+much later as `dyld: Library not loaded` from an unrelated command.
+
+If the host *is* on a supported release, the formula was probably
+renamed or moved; check
 `https://github.com/Homebrew/homebrew-core/tree/HEAD/Formula/`.
 
 ## Stale ini scan directory

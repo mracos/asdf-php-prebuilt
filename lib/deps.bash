@@ -10,8 +10,9 @@
 # dep that has a bottle for the host platform.
 #
 # Dependencies missing from homebrew-core (e.g. test-only or removed
-# formulas) are warned and skipped; bottles missing for our host tag are
-# warned and skipped.
+# formulas) are warned and skipped. A dep that exists but has no bottle for
+# our host tag is fatal: skipping it yields a prefix that links against a
+# dylib nobody installed, which only surfaces much later as a dyld abort.
 
 set -euo pipefail
 
@@ -55,8 +56,9 @@ asdf_php_deps_walk() {
     fi
 
     if ! read -r tag digest < <(printf '%s' "$content" | asdf_php_formula_bottle_resolve); then
-      asdf_php_warn "no bottle for '$name' on $(asdf_php_host_tag) (or fallbacks); skipping"
-      continue
+      asdf_php_die "no bottle for dep '$name' on $(asdf_php_host_tag) (or fallbacks);\
+ homebrew-core only bottles the three newest macOS releases, so this host is\
+ past upstream support"
     fi
 
     echo "$name $root_url $tag $digest"
@@ -142,8 +144,9 @@ asdf_php_deps_walk_ext() {
     fi
 
     if ! read -r tag digest < <(printf '%s' "$content" | asdf_php_formula_bottle_resolve); then
-      asdf_php_warn "no bottle for '$full' on $(asdf_php_host_tag) (or fallbacks); skipping"
-      continue
+      asdf_php_die "no bottle for dep '$full' on $(asdf_php_host_tag) (or fallbacks);\
+ homebrew-core only bottles the three newest macOS releases, so this host is\
+ past upstream support"
     fi
 
     echo "$full $root_url $tag $digest"
