@@ -61,7 +61,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        macos: ["14", "15"]
+        # Track homebrew-core's bottle support, which covers the three newest
+        # macOS releases. Sonoma (14) fell off in Sept 2026 and its deps no
+        # longer resolve; GitHub deprecated the runner image in the same window.
+        macos: ["15", "26"]
     runs-on: macos-${{ matrix.macos }}
     env:
       # gh CLI needs a token for historical installs' commits?until= lookup.

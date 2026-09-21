@@ -104,10 +104,17 @@ source ~/.local/share/mise/installs/php/*/share/completions/asdf-php-ini.bash
 
 ## Requirements
 
-macOS 11+ (Big Sur to Tahoe), arm64 tested, x86_64 should work. Platform
-detection walks back through brew codename tags (`arm64_tahoe`,
-`arm64_sequoia`, `arm64_sonoma`, ...) so newer hosts install older bottles.
-Linux isn't supported yet ([TODO](TODO.md#linux-support)).
+macOS, arm64. Practical floor is whatever homebrew-core still bottles, which
+is the three newest releases: Sequoia (15), Tahoe (26), Golden Gate (27) as of
+this writing. Older codenames stay in the fallback chain (`arm64_tahoe ->
+arm64_sequoia -> arm64_sonoma -> ...`) and still resolve for as long as a
+formula keeps its bottle, but they rot formula by formula as upstream rebuilds:
+Sonoma lost `xz` in Sept 2026 and a dozen more within the week. A dep with no
+bottle anywhere in the chain is a hard error, not a warning.
+
+x86_64 is effectively gone too, since homebrew-core stopped bottling Intel
+macOS in the same window. Linux isn't supported yet
+([TODO](TODO.md#linux-support)).
 
 Needs `git`, `curl`, `awk`, `perl`, and bash 3.2+ (macOS defaults are fine). No
 `jq`. `gh auth login` is only required for historical patch installs.
