@@ -31,59 +31,52 @@ asdf_php_macos_major() {
   sw_vers -productVersion | awk -F. '{print $1}'
 }
 
+# Ordered newest-first "<major> <codename>" table. Single source of truth for
+# the host tag and its fallback chain; mirrors Homebrew's MacOSVersion::RELEASES
+# in Library/Homebrew/macos_version.rb.
+ASDF_PHP_MACOS_RELEASES="27 golden_gate
+26 tahoe
+15 sequoia
+14 sonoma
+13 ventura
+12 monterey
+11 big_sur"
+
 # Print the brew bottle tag matching the host (arm64_sequoia, sonoma, etc.).
-# Falls back are the caller's job (bottle lookup walks older tags on miss).
+# Fallbacks are the caller's job (bottle lookup walks the chain below on miss).
 asdf_php_host_tag() {
-  local arch codename major
-  arch="$(asdf_php_arch)"
-  major="$(asdf_php_macos_major)"
-
-  case "$major" in
-    26) codename=tahoe ;;
-    15) codename=sequoia ;;
-    14) codename=sonoma ;;
-    13) codename=ventura ;;
-    12) codename=monterey ;;
-    11) codename=big_sur ;;
-    *)  asdf_php_die "unsupported macOS major: $major" ;;
-  esac
-
-  if [[ "$arch" == arm64 ]]; then
-    echo "arm64_${codename}"
-  else
-    echo "$codename"
-  fi
+  local tags
+  tags="$(asdf_php_host_tag_fallbacks)"
+  printf '%s\n' "${tags%%$'\n'*}"
 }
 
 # Print the ordered fallback list of bottle tags for the host, newest-first.
-# Bottles are forward-compatible — a Sonoma bottle runs on Sequoia. So when
-# the exact host tag is missing, walk back to older codenames within the
-# same arch.
+#
+# Bottles are backward-compatible (a Sonoma bottle runs on Sequoia) but never
+# forward-compatible: dyld refuses a dylib whose LC_BUILD_VERSION minos is newer
+# than the running OS. So on a miss we walk to *older* codenames only, then to
+# `all`: the OS- and arch-independent tag brew gives data-only formulas such as
+# ca-certificates, which carry no per-codename bottle at all.
 asdf_php_host_tag_fallbacks() {
-  local arch major
+  local arch major found=0 m codename
   arch="$(asdf_php_arch)"
   major="$(asdf_php_macos_major)"
-  local codenames=(tahoe sequoia sonoma ventura monterey big_sur)
-  local start_idx=-1 i codename
 
-  case "$major" in
-    26) start_idx=0 ;;
-    15) start_idx=1 ;;
-    14) start_idx=2 ;;
-    13) start_idx=3 ;;
-    12) start_idx=4 ;;
-    11) start_idx=5 ;;
-  esac
-  [[ $start_idx -ge 0 ]] || asdf_php_die "unsupported macOS major: $major"
-
-  for ((i=start_idx; i<${#codenames[@]}; i++)); do
-    codename="${codenames[$i]}"
+  while read -r m codename; do
+    if [[ $found -eq 0 && "$m" != "$major" ]]; then
+      continue
+    fi
+    found=1
     if [[ "$arch" == arm64 ]]; then
       echo "arm64_${codename}"
     else
       echo "$codename"
     fi
-  done
+  done <<< "$ASDF_PHP_MACOS_RELEASES"
+
+  [[ $found -eq 1 ]] || asdf_php_die "unsupported macOS major: $major"
+
+  echo all
 }
 
 # --- Filesystem ---
