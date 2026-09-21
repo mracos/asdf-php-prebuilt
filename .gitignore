@@ -5,3 +5,4 @@ downloads/
 .tool-versions
 node_modules/
 package-lock.json
+.worktrees/
