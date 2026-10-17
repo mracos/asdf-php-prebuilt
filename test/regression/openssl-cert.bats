@@ -3,7 +3,8 @@
 #
 # History: PHP's bottle bakes
 #   openssl.cafile = "@@HOMEBREW_PREFIX@@/etc/openssl@3/cert.pem"
-# into php.ini. Our placeholder rewrite turned that into
+# (openssl@4 since php@8.1 8.1.34_3) into php.ini. Our placeholder
+# rewrite turned that into
 #   <install>/etc/openssl@3/cert.pem
 # — but that path was never populated, because the bundle comes from
 # brew's `ca-certificates` formula, which is data-only with no bottle.
@@ -11,9 +12,9 @@
 # curl w/ verifypeer) died with:
 #   Warning: failed loading cafile stream: '<install>/etc/openssl@3/cert.pem'
 #   Warning: copy(): Failed to enable crypto
-# Fix: bin/install symlinks <install>/etc/openssl@3/cert.pem to macOS's
-# system store (/etc/ssl/cert.pem), matching what brew's openssl@3
-# post_install does when ca-certificates isn't present.
+# Fix: bin/install symlinks whatever path php.ini's openssl.cafile names
+# to macOS's system store (/etc/ssl/cert.pem), matching what brew's
+# openssl post_install does when ca-certificates isn't present.
 
 load ../helpers
 
@@ -21,21 +22,24 @@ INSTALL="$(any_php_81_install)"
 
 setup() {
   require_install "$INSTALL"
+  CAFILE="$("$INSTALL/bin/php" -r 'echo ini_get("openssl.cafile");')"
 }
 
-@test "openssl@3 cert.pem exists at the expected path" {
-  [ -e "$INSTALL/etc/openssl@3/cert.pem" ] \
-    || { echo "cert.pem missing at $INSTALL/etc/openssl@3/cert.pem"; false; }
+@test "openssl.cafile is inside the install and exists" {
+  [[ "$CAFILE" == "$INSTALL"/* ]] \
+    || { echo "openssl.cafile outside install: $CAFILE"; false; }
+  [ -e "$CAFILE" ] \
+    || { echo "cert.pem missing at $CAFILE"; false; }
 }
 
 @test "cert.pem is readable and non-empty" {
   # -L: follow symlink. -r: readable. -s: non-empty.
-  [ -r "$INSTALL/etc/openssl@3/cert.pem" ]
-  [ -s "$INSTALL/etc/openssl@3/cert.pem" ]
+  [ -r "$CAFILE" ]
+  [ -s "$CAFILE" ]
 }
 
 @test "cert.pem is a real PEM bundle (contains CERTIFICATE blocks)" {
-  run grep -c "BEGIN CERTIFICATE" "$INSTALL/etc/openssl@3/cert.pem"
+  run grep -c "BEGIN CERTIFICATE" "$CAFILE"
   [ "$status" -eq 0 ]
   # A minimally-useful bundle has at least a few dozen roots; 20 is a
   # very conservative lower bound.

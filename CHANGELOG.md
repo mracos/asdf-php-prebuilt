@@ -6,6 +6,14 @@ Notable changes grouped by release. Not yet cut a first release
 
 ## [Unreleased]
 
+### Fixed (CA bundle missing on OpenSSL 4 bottles)
+
+- The cert symlink now follows the `openssl.cafile` / `openssl.capath`
+  paths in php.ini instead of hardcoding `etc/openssl@3`. The tap
+  rebuilt php@8.1 8.1.34_3 against `openssl@4`, so php.ini named
+  `etc/openssl@4/cert.pem`, nothing created it, and every SSL stream
+  failed with `failed loading cafile stream`.
+
 ### Fixed (missing bottles silently shipping a broken prefix)
 
 - The bottle fallback chain now ends at brew's arch-independent `all`
