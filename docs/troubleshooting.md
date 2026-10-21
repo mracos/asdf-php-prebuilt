@@ -59,15 +59,17 @@ rewrite turns into `<install>/etc/openssl@3/cert.pem`. That file
 comes from the `ca-certificates` brew formula, which is data-only
 with no bottle (we skip it during `bin/download`).
 
-The plugin now symlinks `<install>/etc/openssl@3/cert.pem` to the
-macOS system cert bundle (`/etc/ssl/cert.pem`) during install. Older
-installs done before this fix need it patched by hand:
+The plugin now symlinks whatever `openssl.cafile` / `openssl.capath`
+name (`openssl@3` or, for bottles rebuilt against OpenSSL 4,
+`openssl@4`) to the macOS system cert bundle (`/etc/ssl/cert.pem`)
+during install. Older installs done before this fix need it patched by
+hand, using the directory from the warning:
 
 ```sh
-inst=~/.local/share/mise/installs/php/<version>
-mkdir -p "$inst/etc/openssl@3"
-ln -sf /etc/ssl/cert.pem "$inst/etc/openssl@3/cert.pem"
-ln -sf /etc/ssl/certs    "$inst/etc/openssl@3/certs"
+dir=~/.local/share/mise/installs/php/<version>/etc/openssl@4
+mkdir -p "$dir"
+ln -sf /etc/ssl/cert.pem "$dir/cert.pem"
+ln -sf /etc/ssl/certs    "$dir/certs"
 ```
 
 Or `mise uninstall php@<version> && mise install php@<version>` to

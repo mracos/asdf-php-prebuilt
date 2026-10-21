@@ -239,18 +239,26 @@ asdf_php_install_seed_etc() {
   fi
 
   # 3. openssl cert bundle. PHP's php.ini contains
-  #      openssl.cafile = "@@HOMEBREW_PREFIX@@/etc/openssl@3/cert.pem"
-  #    which we rewrote to <install>/etc/openssl@3/cert.pem — but that
-  #    file doesn't exist because ca-certificates is a data-only formula
-  #    with no bottle (we skip it in bin/download). brew's own
-  #    openssl@3 post_install falls back to symlinking macOS system
-  #    certs; do the same. Without this, composer / any PHP SSL client
-  #    fails with "failed loading cafile stream".
-  if [[ -r /etc/ssl/cert.pem && ! -e "$install_path/etc/openssl@3/cert.pem" ]]; then
-    mkdir -p "$install_path/etc/openssl@3"
-    ln -snf /etc/ssl/cert.pem  "$install_path/etc/openssl@3/cert.pem"
-    ln -snf /etc/ssl/certs     "$install_path/etc/openssl@3/certs"
-  fi
+  #      openssl.cafile = "@@HOMEBREW_PREFIX@@/etc/openssl@N/cert.pem"
+  #      openssl.capath = "@@HOMEBREW_PREFIX@@/etc/openssl@N/certs"
+  #    which we rewrote to <install>/etc/openssl@N/..., but nothing
+  #    populates those paths: brew's openssl post_install is what links
+  #    the bundle there, and we never run post_install. Its fallback is
+  #    symlinking macOS system certs; do the same. Without this, composer / any PHP SSL client fails with
+  #    "failed loading cafile stream".
+  #    N tracks whichever openssl the tap built against (php@8.1 moved
+  #    from openssl@3 to openssl@4 in 8.1.34_3), so read the paths from
+  #    php.ini instead of assuming one.
+  local php_ini="$install_path/etc/php/${majmin}/php.ini"
+  local directive target link
+  for directive in cafile:/etc/ssl/cert.pem capath:/etc/ssl/certs; do
+    target="${directive#*:}"
+    link="$(sed -nE "s/^openssl\.${directive%%:*}[[:space:]]*=[[:space:]]*\"?([^\"]*)\"?.*/\1/p" \
+      "$php_ini" 2>/dev/null | head -1)"
+    [[ "$link" == "$install_path"/* && -r "$target" && ! -e "$link" ]] || continue
+    mkdir -p "$(dirname "$link")"
+    ln -snf "$target" "$link"
+  done
 
   # 4. Unify the extension_dir on the pecl/ path.
   #

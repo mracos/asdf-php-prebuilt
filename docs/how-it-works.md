@@ -37,7 +37,8 @@
    live in one directory.
 10. Generate `conf.d/00-asdf-php.ini` (extension_dir) and one
     `conf.d/10-<name>.ini` per shared extension the bottle shipped.
-11. Symlink `<install>/etc/openssl@3/cert.pem` to macOS's system store
+11. Symlink the `openssl.cafile` / `openssl.capath` paths php.ini names
+    (`<install>/etc/openssl@N/...`) to macOS's system store
     (`/etc/ssl/cert.pem`). PHP's `openssl.cafile` in php.ini points
     there, and without the symlink SSL streams fail with "failed
     loading cafile stream".
